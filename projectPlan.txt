@@ -1,0 +1,104 @@
+Project To-Do List: moodynick (v2)
+
+=== PROGRESS TRACKER ===
+✅ Part 1: COMPLETE - Backend Foundation & User Authentication
+✅ Part 2: COMPLETE - Core Data Models & API Routes
+✅ Part 3: COMPLETE - Frontend Design & Customization
+✅ Part 4: COMPLETE - Checkout, Orders & User Profiles
+
+🎉 ALL CORE FEATURES IMPLEMENTED! 🎉
+
+WHAT WAS COMPLETED IN THIS SESSION:
+✅ Created Order model (backend/models/Order.js)
+✅ Fixed mockup generation route with proper Printful API integration
+✅ Completed order creation route with Printful order submission
+✅ Added GET /api/orders route for order history
+✅ Created checkout page (frontend/src/app/checkout/page.tsx)
+✅ Created profile page (frontend/src/app/profile/page.tsx)
+✅ Added "Add to Cart" button to design page
+✅ Enhanced cart page with modern UI
+✅ Fixed authentication token handling in design page
+✅ Created IMPLEMENTATION_SUMMARY.md with testing guide
+
+📋 TESTING INSTRUCTIONS:
+1. Start backend: cd backend && npm start
+2. Start frontend: cd frontend && npm run dev
+3. Test flow: Register → Design → Add to Cart → Checkout → Profile
+
+NEXT STEPS (For Production):
+- Integrate real Stripe Elements for payment processing
+- Add file hosting for design images (AWS S3/Cloudinary)
+- Fix TypeScript errors in design page
+- Add product pricing from Printful API
+- Improve UI/styling throughout the app
+- Add error handling and loading states
+- Add email notifications for orders
+========================
+
+Part 1: Backend Foundation & User Authentication
+Initialize Project Structure: Create the foundational folders and files for your frontend and backend.
+Gemini CLI Prompt: gemini init moodynick-app --frontend react-next --backend node-express
+Define Environment Variables: Create a template for your secret API keys and configuration variables.
+Gemini CLI Prompt: gemini create backend/.env.example with the following variables: PRINTFUL_API_KEY="", STRIPE_SECRET_KEY="", STRIPE_PUBLISHABLE_KEY="", DATABASE_URL="[Your MongoDB Connection String]", JWT_SECRET="[A long, random secret string for signing tokens]"
+Connect to Database: Set up the initial connection to your MongoDB database.
+Gemini CLI Prompt: gemini add code to my main backend file (e.g., server.js) to connect to MongoDB using Mongoose and the DATABASE_URL from my environment variables.
+Create User Database Schema: Define the structure for user accounts.
+Gemini CLI Prompt: gemini create a Mongoose schema in a new file named 'backend/models/User.js'. The schema should be named 'User' and include 'email' (String, required, unique), and 'password' (String, required). Also, add a pre-save hook using bcrypt to hash the password before it is saved to the database.
+Build User Authentication Routes: Create the endpoints for user registration and login.
+Gemini CLI Prompt: gemini create a new API route file at 'backend/routes/auth.js'. Create a POST route for '/register' that validates user input, hashes the password, creates a new user, and returns a JSON Web Token (JWT). Create a second POST route for '/login' that validates credentials, compares the hashed password, and returns a JWT if successful.
+Create Authentication Middleware: Build a function to protect certain routes so that only logged-in users can access them.
+Gemini CLI Prompt: gemini create a middleware function in a new file 'backend/middleware/auth.js'. This function should check for a valid JWT in the request headers. If the token is valid, it should add the user's ID to the request object and pass control to the next function. If not, it should return a 401 Unauthorized error.
+🧪 Testing Guide - Part 1
+Database Connection: Run your backend server (node server.js). Does it log a "Successfully connected to MongoDB" message, or does it crash with an error?
+User Registration: Using a tool like Postman or Insomnia, send a POST request to http://localhost:[PORT]/api/auth/register with a JSON body containing an email and password.
+Did you get a 201 Created status and a token back?
+Try registering with the same email again. Did you correctly get an error message (e.g., 400 Bad Request)?
+User Login: Send a POST request to http://localhost:[PORT]/api/auth/login.
+With the correct credentials, do you get a 200 OK status and a token?
+With an incorrect password, do you get an authorization error (e.g., 401 Unauthorized)?
+Part 2: Core Data Models & API Routes
+Create Artwork & Design Schemas: Define the structure for storing artwork and saved user designs.
+Gemini CLI Prompt: gemini create two Mongoose schemas. The first, in 'backend/models/Artwork.js', should be named 'Artwork' and have 'imageUrl' (String, required) and 'tags' (Array of Strings). The second, in 'backend/models/Design.js', should be named 'Design' and have 'user' (ObjectId, ref: 'User'), 'productVariantId' (Number, required), and 'placements' (Object, required). Enable timestamps for the Design schema.
+Build Routes for Products & Artwork: Create public endpoints to get the product catalog from Printful and all available artwork from your database.
+Gemini CLI Prompt: gemini create a new route file at 'backend/routes/catalog.js'. Add a GET route '/products' that fetches the product list from the Printful API. Add a second GET route '/artwork' that fetches all documents from the 'Artwork' MongoDB collection.
+Build Routes for Saved Designs: Create protected endpoints for users to manage their designs.
+Gemini CLI Prompt: gemini create a new route file at 'backend/routes/designs.js'. Import and apply the authentication middleware to all routes in this file. Create a POST route '/' to save a new design. Create a GET route '/' that fetches all designs for the currently logged-in user. Create a DELETE route '/:id' to delete a specific design.
+(Admin) Create Artwork Upload Route: Build a secure endpoint for you (as the admin) to add new artwork and tags.
+Gemini CLI Prompt: gemini in the 'backend/routes/catalog.js' file, create a new POST route at '/artwork/upload'. Protect this route with your authentication middleware. This route should accept an 'imageUrl' and an array of 'tags' and create a new Artwork document in the database.
+(For simplicity, you can initially protect it with the standard login. Later, you can add a more robust admin role system.)
+🧪 Testing Guide - Part 2
+Public Routes: In your browser or Postman, try to access the /api/catalog/products and /api/catalog/artwork endpoints. Do you get the correct data back without being logged in?
+Protected Design Routes:
+Try to send a GET request to /api/designs without an Authorization token in the header. You should receive a 401 Unauthorized error.
+Now, log in to get a token. Repeat the GET request, but this time add the header Authorization: Bearer [YOUR_JWT_TOKEN]. You should now get a 200 OK status (and probably an empty array if you haven't saved anything).
+Try saving a design with a POST request to /api/designs (with the token). Check your database to see if the design was saved with the correct user ID.
+Part 3: Frontend Design & Customization
+Set Up Frontend Pages: Create the basic pages for your app.
+Gemini CLI Prompt: gemini create the following page components in my Next.js app: 'pages/shop.js', 'pages/login.js', 'pages/register.js', and a dynamic route 'pages/design/[productId].js'. Also create a main navigation bar component that includes links to the Shop and Login/Profile.
+Implement the Design Canvas: Add the interactive design tool using react-konva. This is a complex step.
+Gemini CLI Prompt: gemini using 'react-konva', implement the design canvas on my '[productId].js' page. It should display the product template. Fetch artwork from '/api/catalog/artwork' and display it in a sidebar. Enable drag-and-drop for images onto the canvas. Dropped images must be movable, resizable (maintaining aspect ratio), and rotatable.
+Add Text Functionality to Canvas: Enhance the design tool to allow users to add and edit text.
+Gemini CLI Prompt: gemini enhance my 'react-konva' design canvas. Add a button 'Add Text'. When clicked, it should add a new Konva 'Text' object to the stage with default text like 'Your Text Here'. The user should be able to edit the text content, font family, font size, and color using input fields on the page. The text object must also be movable, resizable, and rotatable.
+Implement Save Design Functionality: Connect the save button to your backend.
+Gemini CLI Prompt: gemini on my design page, create a 'Save Design' button. When clicked, it should only be active if a user is logged in. It will collect the placement data for all images and text objects on the canvas, along with the product variant ID, and send it in a POST request to the protected '/api/designs' endpoint.
+🧪 Testing Guide - Part 3
+Design Canvas: Does the product template load correctly? Can you drag an image from the sidebar onto the canvas? Can you move, resize, and rotate it?
+Text Tool: Does the "Add Text" button work? Can you see the default text appear? When you select the text, do input fields appear for editing its properties? Do your edits (changing the words, color, size) reflect live on the canvas?
+Saving:
+Log out. Is the "Save Design" button disabled or hidden?
+Log in. Create a design with both an image and a text box. Click "Save Design."
+Check your browser's network tab. Did the request to /api/designs succeed with a 201 Created status? Check your database to confirm the design data was stored correctly.
+Part 4: Checkout, Orders & User Profiles
+Build Mockup Generation Route: Create the endpoint that generates product mockups from a design.
+Gemini CLI Prompt: gemini create a POST route in my Express backend at '/api/mockups/generate'. It should accept a product variant ID and an array of design placements (for both images and text). This route will call the Printful Mockup Generator API and return the generated mockup images.
+Build Checkout & Order Creation Routes: Create the secure endpoints for payment with Stripe and order submission to Printful.
+Gemini CLI Prompt: gemini create a new route file 'backend/routes/orders.js'. Protect it with auth middleware. Create a POST route '/create-payment-intent' that uses the Stripe SDK to create a Payment Intent. Create a second POST route '/create-order' that should be called after a successful payment. It will take the final design and shipping info, submit the order to the Printful Orders API, and save the order confirmation details to your database, linking it to the user.
+Build Frontend Checkout Flow: Create the cart and checkout pages.
+Gemini CLI Prompt: gemini create a 'pages/cart.js' and a 'pages/checkout.js' component. On the design page, replace the 'Add to Cart' button logic to add the finished mockup and design data to a global cart state. The checkout page should display the cart, collect a shipping address, and use Stripe React Elements to securely handle payment by calling the '/api/orders/create-payment-intent' endpoint.
+Build User Profile Page: Create the page where users can see their saved work and past orders.
+Gemini CLI Prompt: gemini create a new page component at 'pages/profile.js'. This page should be client-side protected, redirecting to login if no user is present. It should make two requests to the backend: one to '/api/designs' to get the user's saved designs, and one to '/api/orders' (you'll need to build this GET route) to get their order history. Display both lists on the page.
+🧪 Testing Guide - Part 4
+Mockups: On the design page, click "Generate Mockup." Does a request go to your backend? Does your backend successfully talk to Printful and return mockup image URLs? Are the mockups displayed correctly in a modal?
+Checkout: Add an item to your cart. Can you go to the checkout page and see the item? Use Stripe's test card numbers to simulate a payment. Does the payment succeed? After payment, is the order sent to your /api/orders/create-order endpoint?
+Printful Order: Check your Printful Dashboard. Did the test order appear correctly?
+Profile Page: Navigate to the profile page. Does it correctly show the design you saved earlier? After making a test purchase, does the new order appear in your order history? Log out and try to access the profile page URL directly; you should be redirected to the login page.

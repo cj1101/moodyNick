@@ -88,3 +88,10 @@ build/
 # Database files (if any local development)
 *.db
 *.sqlite
+
+# Python virtual environment
+venv/
+env/
+ENV/
+*.pyc
+__pycache__/

@@ -20,7 +20,8 @@ router.post('/generate', auth, async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`,
+                'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
             },
             body: JSON.stringify(mockupData)
         });
@@ -48,7 +49,8 @@ router.post('/generate', auth, async (req, res) => {
             const resultResponse = await fetch(`https://api.printful.com/mockup-generator/task?task_key=${taskKey}`, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+                    'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`,
+                    'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
                 }
             });
 

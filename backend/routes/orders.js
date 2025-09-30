@@ -58,7 +58,8 @@ router.post('/create-order', auth, async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`,
+                'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
             },
             body: JSON.stringify(printfulOrderData)
         });

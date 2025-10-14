@@ -30,10 +30,26 @@ router.post('/create-payment-intent', auth, async (req, res) => {
 // @desc    Create a new order and submit to Printful
 // @access  Private
 router.post('/create-order', auth, async (req, res) => {
-    const { productVariantId, design, shippingAddress, totalCost, paymentIntentId } = req.body;
+    const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost, paymentIntentId } = req.body;
 
     try {
         // Prepare Printful order data
+        const items = [];
+        if (syncVariantId) {
+            items.push({
+                sync_variant_id: syncVariantId,
+                quantity: Number(quantity) || 1
+            });
+        } else if (productVariantId) {
+            items.push({
+                variant_id: productVariantId,
+                quantity: Number(quantity) || 1,
+                files: (design && design.files) ? design.files : []
+            });
+        } else {
+            return res.status(400).json({ message: 'Either syncVariantId or productVariantId is required' });
+        }
+
         const printfulOrderData = {
             recipient: {
                 name: shippingAddress.name,
@@ -44,13 +60,7 @@ router.post('/create-order', auth, async (req, res) => {
                 country_code: shippingAddress.country_code,
                 zip: shippingAddress.zip
             },
-            items: [
-                {
-                    variant_id: productVariantId,
-                    quantity: 1,
-                    files: design.files || []
-                }
-            ]
+            items
         };
 
         // Submit order to Printful
@@ -78,6 +88,8 @@ router.post('/create-order', auth, async (req, res) => {
             user: req.user.id,
             printfulOrderId: printfulData.result.id,
             productVariantId,
+            syncVariantId,
+            quantity: Number(quantity) || 1,
             design,
             shippingAddress,
             totalCost,

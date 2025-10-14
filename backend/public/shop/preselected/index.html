@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Preselected Products</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0b0f1a; --card: #111827; --muted: #9CA3AF; --text: #E5E7EB; --primary: #60A5FA; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; background: linear-gradient(180deg, #0b0f1a 0%, #0d111f 100%); color: var(--text); }
+    header { padding: 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 0; backdrop-filter: blur(6px); background: rgba(11,15,26,0.6); }
+    header h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.2px; }
+    header a { color: var(--muted); text-decoration: none; font-size: 14px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 8px 0 18px; }
+    .title h2 { margin: 0; font-size: 24px; }
+    .title p { margin: 0; color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: radial-gradient(150% 100% at 50% 0%, rgba(96,165,250,0.06) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.02) 100%), var(--card); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card:hover { transform: translateY(-4px); border-color: rgba(96,165,250,0.35); box-shadow: 0 12px 40px rgba(96,165,250,0.18); }
+    .thumb { background: #0b0f1a; height: 200px; display: grid; place-items: center; }
+    .thumb img { max-height: 180px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 8px 20px rgba(0,0,0,0.45)); }
+    .content { padding: 14px; }
+    .name { font-size: 15px; font-weight: 600; margin: 0 0 6px; color: #F3F4F6; }
+    .meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
+    .pill { background: rgba(96,165,250,0.12); color: #93C5FD; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(96,165,250,0.25); }
+    .error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #FCA5A5; padding: 12px; border-radius: 12px; margin: 12px 0; }
+    .loading { color: var(--muted); padding: 24px; text-align: center; }
+    .footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px 0 40px; }
+    .search { display: flex; gap: 10px; }
+    input[type="search"] { width: 100%; background: rgba(17,24,39,0.8); color: #E5E7EB; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px; }
+    .actions { display: flex; gap: 10px; }
+    .btn { background: linear-gradient(180deg, rgba(96,165,250,0.15), rgba(96,165,250,0.08)); color: #E5E7EB; border: 1px solid rgba(96,165,250,0.35); border-radius: 10px; padding: 9px 12px; text-decoration: none; font-size: 14px; transition: filter .2s ease; }
+    .btn:hover { filter: brightness(1.15); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shop — Preselected</h1>
+    <a href="/">Back home</a>
+  </header>
+  <div class="container">
+    <div class="title">
+      <h2>Curated products</h2>
+      <p>Ready-to-buy items from your Printful store</p>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search products..." />
+      <div class="actions">
+        <a class="btn" href="/shop/customize">Customize instead</a>
+      </div>
+    </div>
+    <div id="status" class="loading">Loading products…</div>
+    <div id="grid" class="grid" hidden></div>
+    <div class="footer">Powered by Printful Sync API</div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const gridEl = document.getElementById('grid');
+    const qEl = document.getElementById('q');
+
+    function productUrl(p){ return `/shop/preselected/${p.id}` }
+
+    function card(p){
+      const thumb = (p.thumbnail || p.preview || '').replace('http://', 'https://');
+      return `
+      <a class="card" href="${productUrl(p)}">
+        <div class="thumb">${thumb ? `<img alt="${p.name}" src="${thumb}" />` : ''}</div>
+        <div class="content">
+          <div class="name">${p.name}</div>
+          <div class="meta">
+            <span class="pill">${(p.sync_variants||[]).length} variants</span>
+            <span>${p.external_id ? 'SKU ' + p.external_id : ''}</span>
+          </div>
+        </div>
+      </a>`;
+    }
+
+    function render(list){
+      gridEl.innerHTML = list.map(card).join('');
+    }
+
+    function filter(list, q){
+      if(!q) return list;
+      const s = q.trim().toLowerCase();
+      return list.filter(p => (p.name||'').toLowerCase().includes(s) || (p.external_id||'').toLowerCase().includes(s));
+    }
+
+    async function load(){
+      try{
+        const r = await fetch('/api/catalog/store-products');
+        const data = await r.json();
+        if(!r.ok){ throw new Error(data && data.message || 'Failed to load'); }
+        const items = (data.result || []).map(sp => ({
+          id: sp.id,
+          name: sp.name,
+          external_id: sp.external_id,
+          thumbnail: sp.thumbnail_url,
+          preview: sp.preview_url,
+          sync_variants: sp.sync_variants
+        }));
+        statusEl.hidden = true;
+        gridEl.hidden = false;
+        render(items);
+        qEl.addEventListener('input', () => render(filter(items, qEl.value)));
+      }catch(e){
+        statusEl.className = 'error';
+        statusEl.innerText = 'Error: ' + e.message;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

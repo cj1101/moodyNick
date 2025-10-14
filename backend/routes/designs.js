@@ -11,10 +11,16 @@ router.use(auth);
 // @access  Private
 router.post('/', async (req, res) => {
   try {
-    const { productVariantId, placements } = req.body;
+    const { productVariantId, productId, placements } = req.body;
+    
+    if (!productId) {
+      return res.status(400).json({ msg: 'Product ID is required' });
+    }
+    
     const newDesign = new Design({
       user: req.user.id,
       productVariantId,
+      productId,
       placements,
     });
     const design = await newDesign.save();

@@ -4,6 +4,7 @@ const { check, validationResult } = require('express-validator');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const auth = require('../middleware/auth');
 
 // @route   POST api/auth/register
 // @desc    Register user
@@ -18,8 +19,10 @@ router.post(
     ).isLength({ min: 8 }),
   ],
   async (req, res) => {
+    console.log('📝 Register request received:', { email: req.body.email });
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -29,6 +32,7 @@ router.post(
       let user = await User.findOne({ email });
 
       if (user) {
+        console.log('❌ User already exists:', email);
         return res.status(400).json({ msg: 'User already exists' });
       }
 
@@ -38,6 +42,7 @@ router.post(
       });
 
       await user.save();
+      console.log('✅ User created successfully:', email);
 
       const payload = {
         user: {
@@ -51,11 +56,12 @@ router.post(
         { expiresIn: 360000 },
         (err, token) => {
           if (err) throw err;
-          res.json({ token });
+          console.log('✅ Token generated for user:', email);
+          res.json({ token, user: { id: user.id, email: user.email } });
         }
       );
     } catch (err) {
-      console.error(err.message);
+      console.error('❌ Register error:', err.message);
       res.status(500).send('Server error');
     }
   }
@@ -71,8 +77,10 @@ router.post(
     check('password', 'Password is required').exists(),
   ],
   async (req, res) => {
+    console.log('🔐 Login request received:', { email: req.body.email });
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -82,12 +90,14 @@ router.post(
       let user = await User.findOne({ email });
 
       if (!user) {
+        console.log('❌ User not found:', email);
         return res.status(400).json({ msg: 'Invalid Credentials' });
       }
 
       const isMatch = await bcrypt.compare(password, user.password);
 
       if (!isMatch) {
+        console.log('❌ Password mismatch for user:', email);
         return res.status(400).json({ msg: 'Invalid Credentials' });
       }
 
@@ -103,14 +113,29 @@ router.post(
         { expiresIn: 360000 },
         (err, token) => {
           if (err) throw err;
-          res.json({ token });
+          console.log('✅ Login successful for user:', email);
+          res.json({ token, user: { id: user.id, email: user.email } });
         }
       );
     } catch (err) {
-      console.error(err.message);
+      console.error('❌ Login error:', err.message);
       res.status(500).send('Server error');
     }
   }
 );
+
+// @route   GET api/auth/me
+// @desc    Get current user
+// @access  Private
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    console.log('✅ User info retrieved:', user.email);
+    res.json(user);
+  } catch (err) {
+    console.error('❌ Error getting user info:', err.message);
+    res.status(500).send('Server error');
+  }
+});
 
 module.exports = router;

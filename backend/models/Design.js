@@ -10,6 +10,12 @@ const designSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  productId: {
+    type: Number,
+    required: true,
+  },
+  // placements is now an object with keys for each placement area (front, back, left, right, etc.)
+  // Each placement contains: { images: [], texts: [] }
   placements: {
     type: Object,
     required: true,

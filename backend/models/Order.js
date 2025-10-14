@@ -12,11 +12,19 @@ const OrderSchema = new mongoose.Schema({
     },
     productVariantId: {
         type: Number,
-        required: true
+        required: false
+    },
+    syncVariantId: {
+        type: Number,
+        required: false
+    },
+    quantity: {
+        type: Number,
+        default: 1
     },
     design: {
         type: Object,
-        required: true
+        required: false
     },
     shippingAddress: {
         name: { type: String, required: true },

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0b0f1a; --card: #111827; --muted: #9CA3AF; --text: #E5E7EB; --primary: #60A5FA; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; background: linear-gradient(180deg, #0b0f1a 0%, #0d111f 100%); color: var(--text); }
+    header { padding: 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 0; backdrop-filter: blur(6px); background: rgba(11,15,26,0.6); }
+    header h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.2px; }
+    header a { color: var(--muted); text-decoration: none; font-size: 14px; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
+    .breadcrumbs { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; }
+    .gallery { background: radial-gradient(150% 100% at 50% 0%, rgba(96,165,250,0.06) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.02) 100%), var(--card); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; overflow: hidden; padding: 20px; }
+    .gallery img { width: 100%; max-height: 520px; object-fit: contain; filter: drop-shadow(0 14px 35px rgba(0,0,0,0.45)); }
+    .panel { background: var(--card); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 18px; }
+    .name { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+    .desc { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+    .price { font-size: 20px; color: #F9FAFB; margin: 10px 0; }
+    .row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+    select, input[type="number"] { width: 100%; background: rgba(17,24,39,0.8); color: #E5E7EB; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(180deg, rgba(96,165,250,0.15), rgba(96,165,250,0.08)); color: #E5E7EB; border: 1px solid rgba(96,165,250,0.35); border-radius: 10px; padding: 10px 14px; text-decoration: none; font-size: 14px; cursor: pointer; }
+    .btn:hover { filter: brightness(1.15); }
+    .muted { color: var(--muted); font-size: 12px; }
+    .error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #FCA5A5; padding: 12px; border-radius: 12px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shop — Preselected</h1>
+    <a href="/shop/preselected">Back to list</a>
+  </header>
+  <div class="container">
+    <div id="crumbs" class="breadcrumbs">Home / Preselected</div>
+    <div class="layout">
+      <div class="gallery"><img id="img" alt="" /></div>
+      <div class="panel">
+        <div id="name" class="name">Loading…</div>
+        <div id="desc" class="desc"></div>
+        <div id="price" class="price"></div>
+        <div class="row">
+          <label class="muted" style="min-width:100px">Variant</label>
+          <select id="variant"></select>
+        </div>
+        <div class="row">
+          <label class="muted" style="min-width:100px">Qty</label>
+          <input id="qty" type="number" min="1" value="1" />
+        </div>
+        <div class="row">
+          <button id="buy" class="btn">Buy now</button>
+        </div>
+        <div id="status" class="muted"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const img = document.getElementById('img');
+    const nameEl = document.getElementById('name');
+    const descEl = document.getElementById('desc');
+    const priceEl = document.getElementById('price');
+    const variantEl = document.getElementById('variant');
+    const qtyEl = document.getElementById('qty');
+    const statusEl = document.getElementById('status');
+
+    function fmtUSD(cents){
+      if(!Number.isFinite(cents)) return '';
+      return new Intl.NumberFormat('en-US',{style:'currency', currency:'USD'}).format(cents/100);
+    }
+
+    function getId(){ return location.pathname.split('/').pop(); }
+
+    async function load(){
+      try{
+        const id = getId();
+        const r = await fetch(`/api/catalog/store-products/${id}`);
+        const data = await r.json();
+        if(!r.ok){ throw new Error(data && data.message || 'Failed to load'); }
+        const p = data.result;
+        nameEl.textContent = p.name;
+        descEl.textContent = (p.description || '').replace(/<[^>]*>?/gm,'').trim();
+        img.src = (p.thumbnail_url || p.preview_url || '').replace('http://', 'https://');
+        const variants = (p.sync_variants || []).map(v => ({ id: v.id, name: v.name, retailPriceCents: Math.round(((v.retail_price && parseFloat(v.retail_price)) || 0) * 100) }));
+        variantEl.innerHTML = variants.map(v => `<option value="${v.id}">${v.name}${v.retailPriceCents? ' — '+fmtUSD(v.retailPriceCents): ''}</option>`).join('');
+        updatePrice();
+      }catch(e){
+        statusEl.className = 'error';
+        statusEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function updatePrice(){
+      const opt = variantEl.options[variantEl.selectedIndex];
+      const text = opt && opt.textContent;
+      const match = text && text.match(/\$[0-9,.]+$/);
+      priceEl.textContent = match ? match[0] : '';
+    }
+
+    variantEl.addEventListener('change', updatePrice);
+
+    async function buy(){
+      try{
+        statusEl.textContent = 'Creating order…';
+        const syncVariantId = Number(variantEl.value);
+        const quantity = Number(qtyEl.value) || 1;
+        // Placeholder: this demo page does not include auth or Stripe UI.
+        const shippingAddress = { name: 'Demo Buyer', address1: '123 Main St', city: 'New York', state_code: 'NY', country_code: 'US', zip: '10001' };
+        const totalCost = 0;
+        const paymentIntentId = 'demo';
+        const r = await fetch('/api/orders/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('token') || '' },
+          body: JSON.stringify({ syncVariantId, quantity, shippingAddress, totalCost, paymentIntentId })
+        });
+        const data = await r.json();
+        if(!r.ok){ throw new Error((data && (data.message || data.error && data.error.error || data.error && data.error.message)) || 'Failed to create order'); }
+        statusEl.textContent = 'Order created!';
+      }catch(e){
+        statusEl.className = 'error';
+        statusEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    document.getElementById('buy').addEventListener('click', buy);
+
+    load();
+  </script>
+</body>
+</html>

@@ -1032,4 +1032,115 @@ router.get('/products/:productId/flat-image', async (req, res) => {
     }
 });
 
+// @route   GET api/catalog/products/:productId/templates
+// @desc    Get all product templates for a product
+// @access  Public
+router.get('/products/:productId/templates', async (req, res) => {
+    const { productId } = req.params;
+    
+    try {
+        console.log(`[Product Templates] Fetching templates for product ${productId}`);
+        
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
+        }
+        
+        // Fetch product templates from Printful
+        const response = await fetch(`https://api.printful.com/product-templates?product_id=${productId}`, {
+            headers: {
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error(`[Product Templates] Failed to fetch templates:`, data);
+            return res.status(response.status).json({ 
+                message: 'Failed to fetch product templates',
+                error: data 
+            });
+        }
+        
+        const templates = data.result || [];
+        console.log(`[Product Templates] ✓ Found ${templates.length} templates for product ${productId}`);
+        
+        res.json({ templates });
+    } catch (error) {
+        console.error('[Product Templates] Server error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   GET api/catalog/products/:productId/templates/:variantId
+// @desc    Get specific product template for a variant
+// @access  Public
+router.get('/products/:productId/templates/:variantId', async (req, res) => {
+    const { productId, variantId } = req.params;
+    const { placement } = req.query;
+    
+    try {
+        console.log(`[Product Template] Fetching template for product ${productId}, variant ${variantId}, placement ${placement}`);
+        
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
+        }
+        
+        // Fetch all templates for this product
+        const response = await fetch(`https://api.printful.com/product-templates?product_id=${productId}`, {
+            headers: {
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error(`[Product Template] Failed to fetch templates:`, data);
+            return res.status(response.status).json({ 
+                message: 'Failed to fetch product templates',
+                error: data 
+            });
+        }
+        
+        const templates = data.result || [];
+        
+        // Find template matching variant and placement
+        let template = templates.find(t => 
+            t.variant_id === parseInt(variantId) && 
+            t.placement === placement
+        );
+        
+        // If no exact match, try to find template for this variant with any placement
+        if (!template && placement === 'front') {
+            template = templates.find(t => t.variant_id === parseInt(variantId));
+        }
+        
+        // If still no match, try first template for this product with matching placement
+        if (!template) {
+            template = templates.find(t => t.placement === placement);
+        }
+        
+        // Last resort: first template for this product
+        if (!template && templates.length > 0) {
+            template = templates[0];
+        }
+        
+        if (template) {
+            console.log(`[Product Template] ✓ Found template:`, template.template_url || template.mockup_file_url);
+            res.json({ 
+                templateUrl: template.template_url || template.mockup_file_url,
+                placement: template.placement || placement || 'front',
+                variant_id: template.variant_id
+            });
+        } else {
+            console.warn(`[Product Template] No template found for variant ${variantId}, placement ${placement}`);
+            res.status(404).json({ message: 'No template available for this variant' });
+        }
+    } catch (error) {
+        console.error('[Product Template] Server error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
 module.exports = router;

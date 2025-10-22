@@ -111,21 +111,20 @@ router.get('/products', async (req, res) => {
       ...allProducts.filter(p => !priorityTypes.includes(p.type))
     ];
     
-    console.log(`[Products] Checking products for 3D mockup support...`);
+    console.log(`[Products] Checking products for mockup generation capability...`);
     
-    // Filter products that support 3D mockups
-    // Note: The "Mockup" option is only available in individual product details
+    // Filter products that can generate mockups (have flat files for mockup)
     const productsWithMockups = [];
     
     for (const product of sortedProducts) {
       // Stop if we already have 20 products
       if (productsWithMockups.length >= 20) {
-        console.log(`[Products] Reached 20 products with 3D mockup support, stopping search`);
+        console.log(`[Products] Reached 20 products with mockup support, stopping search`);
         break;
       }
       
       try {
-        // Fetch detailed product info to check for 3D mockup support
+        // Fetch detailed product info
         const detailResponse = await fetch(`https://api.printful.com/products/${product.id}`, {
           headers: {
             'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
@@ -134,18 +133,57 @@ router.get('/products', async (req, res) => {
         
         if (detailResponse.ok) {
           const detailData = await detailResponse.json();
-          const mockupOptions = detailData.result?.product?.options || [];
-          // 3D mockup support is indicated by the "lifelike" option
-          const hasMockupOption = mockupOptions.some(opt => opt.id === 'lifelike' || opt.id === 'Mockup');
+          const variants = detailData.result?.variants || [];
           
-          if (hasMockupOption) {
+          // Check if product variants can generate mockups
+          let canGenerateMockups = false;
+          if (variants.length > 0) {
+            // Check the first variant for flat or default files (needed for mockups)
+            const firstVariantId = variants[0].id;
+            const variantResponse = await fetch(`https://api.printful.com/products/variant/${firstVariantId}`, {
+              headers: {
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+              }
+            });
+            
+            if (variantResponse.ok) {
+              const variantData = await variantResponse.json();
+              const files = variantData.result?.product?.files || [];
+              const variantImage = variantData.result?.variant?.image;
+              const productImage = variantData.result?.product?.image;
+              
+              // Check if product can generate mockups:
+              // 1. Must have printfiles (areas where designs can be placed)
+              // 2. Must have a variant or product image (for mockup generation)
+              const hasPrintfiles = files.some(f => 
+                f.type === 'default' || 
+                f.type === 'front' || 
+                f.type === 'back' ||
+                f.type === 'mockup' ||
+                f.type === 'flat'
+              );
+              
+              const hasImage = !!(variantImage || productImage);
+              
+              canGenerateMockups = hasPrintfiles && hasImage;
+              
+              if (canGenerateMockups) {
+                console.log(`[Products] ✓ [${productsWithMockups.length + 1}/20] Product ${product.id} (${product.type_name}: ${product.title}) - Has ${files.length} printfiles and variant image`);
+              } else if (!hasPrintfiles) {
+                console.log(`[Products] ✗ Product ${product.id} - No printfiles found`);
+              } else if (!hasImage) {
+                console.log(`[Products] ✗ Product ${product.id} - No variant/product image available`);
+              }
+            }
+          }
+          
+          if (canGenerateMockups) {
             productsWithMockups.push(product);
-            console.log(`[Products] ✓ [${productsWithMockups.length}/20] Product ${product.id} (${product.type_name}: ${product.title}) supports 3D mockups`);
           }
         }
         
         // Small delay to avoid rate limiting
-        if (productsWithMockups.length < 20 && (allProducts.indexOf(product) + 1) % 20 === 0) {
+        if (productsWithMockups.length < 20 && sortedProducts.indexOf(product) % 10 === 0) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       } catch (error) {
@@ -153,7 +191,7 @@ router.get('/products', async (req, res) => {
       }
     }
     
-    console.log(`[Products] ✓ Found ${productsWithMockups.length} products with 3D mockup support`);
+    console.log(`[Products] ✓ Found ${productsWithMockups.length} products with mockup generation capability`);
     
     // Limit to top 20 if there are more
     const finalProducts = productsWithMockups.slice(0, 20);
@@ -173,7 +211,7 @@ router.get('/products', async (req, res) => {
       variant_count: product.variant_count || 0,
       currency: 'USD',
       description: product.description || '',
-      has_3d_mockups: true
+      can_generate_mockups: true
     }));
     
     console.log(`[Products] Returning ${transformedProducts.length} products to frontend`);
@@ -283,8 +321,7 @@ router.get('/products/:productId', async (req, res) => {
       // Include dimensions and other metadata
       dimensions: productData.dimensions,
       is_discontinued: productData.is_discontinued || false,
-      // Check if it supports 3D mockups (indicated by "lifelike" or "Mockup" option)
-      has_3d_mockups: productData.options?.some(opt => opt.id === 'lifelike' || opt.id === 'Mockup') || false
+      can_generate_mockups: true
     };
     
     console.log(`[Product Details] ✓ Returning details for ${transformedProduct.title} with ${transformedProduct.variants.length} variants`);
@@ -439,53 +476,221 @@ router.post('/products/:productId/mockup', async (req, res) => {
     try {
         let imageUrl = designDataUrl;
         
-        // If designDataUrl is a data URL, we need to upload it to Printful first
+        // If designDataUrl is a data URL, upload it to Printful's file library
         if (designDataUrl && designDataUrl.startsWith('data:')) {
-            console.log(`[Mockup Request] Design is a data URL, uploading to Printful...`);
+            console.log(`[Mockup Request] Uploading data URL to Printful file library...`);
             
             try {
-                // Upload the image to Printful's file hosting
+                // Extract base64 data
+                const matches = designDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                if (!matches) {
+                    console.error(`[Mockup Request] Invalid data URL format`);
+                    return res.status(400).json({ message: 'Invalid image data format' });
+                }
+                
+                const mimeType = matches[1];
+                const base64Data = matches[2];
+                
+                // Upload to Printful file library using base64 data
+                const uploadPayload = {
+                    type: 'default',
+                    filename: 'design.png',
+                    data: base64Data
+                };
+                
+                console.log(`[Mockup Request] Uploading ${base64Data.length} bytes...`);
+                
                 const uploadResponse = await fetch('https://api.printful.com/files', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
                     },
-                    body: JSON.stringify({
-                        type: 'default',
-                        url: designDataUrl
-                    })
+                    body: JSON.stringify(uploadPayload)
                 });
                 
                 const uploadData = await uploadResponse.json();
                 
+                console.log(`[Mockup Request] Upload response status: ${uploadResponse.status}`);
+                console.log(`[Mockup Request] Upload response:`, JSON.stringify(uploadData, null, 2));
+                
                 if (uploadResponse.ok && uploadData.result) {
-                    imageUrl = uploadData.result.url || uploadData.result.preview_url;
-                    console.log(`[Mockup Request] ✓ Image uploaded successfully: ${imageUrl}`);
+                    const result = uploadData.result;
+                    const fileId = result.id;
+                    
+                    console.log(`[Mockup Request] File uploaded with ID: ${fileId}, status: ${result.status}`);
+                    
+                    // If file is still processing (status: 'waiting'), poll until ready
+                    if (result.status === 'waiting') {
+                        console.log(`[Mockup Request] File is processing, polling for completion...`);
+                        
+                        let fileReady = false;
+                        let attempts = 0;
+                        const maxAttempts = 10;
+                        
+                        while (!fileReady && attempts < maxAttempts) {
+                            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                            attempts++;
+                            
+                            // Get file info to check status
+                            const fileInfoResponse = await fetch(`https://api.printful.com/files/${fileId}`, {
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+                                }
+                            });
+                            
+                            const fileInfo = await fileInfoResponse.json();
+                            
+                            if (fileInfoResponse.ok && fileInfo.result) {
+                                console.log(`[Mockup Request] Poll ${attempts}/${maxAttempts}: status=${fileInfo.result.status}, url=${fileInfo.result.url ? 'available' : 'null'}`);
+                                
+                                if (fileInfo.result.status === 'ok' || fileInfo.result.url) {
+                                    imageUrl = fileInfo.result.url || fileInfo.result.preview_url || fileInfo.result.thumbnail_url;
+                                    if (imageUrl) {
+                                        fileReady = true;
+                                        console.log(`[Mockup Request] ✓ File ready: ${imageUrl}`);
+                                    }
+                                } else if (fileInfo.result.status === 'failed') {
+                                    console.error(`[Mockup Request] File processing failed:`, fileInfo.result);
+                                    return res.status(500).json({ 
+                                        message: 'File processing failed. This usually means the uploaded image is invalid or corrupted. Please try adding some artwork to your design.',
+                                        error: fileInfo.result,
+                                        details: 'The image file could not be processed by Printful. Make sure you have added at least one image or text element to your design.'
+                                    });
+                                }
+                            }
+                        }
+                        
+                        if (!fileReady || !imageUrl) {
+                            console.error(`[Mockup Request] File processing timeout after ${attempts} attempts`);
+                            return res.status(408).json({ 
+                                message: 'File processing timed out. Please try again.'
+                            });
+                        }
+                    } else if (result.status === 'ok') {
+                        // File is already ready
+                        imageUrl = result.url || result.preview_url || result.thumbnail_url;
+                        if (!imageUrl) {
+                            console.error(`[Mockup Request] File status is 'ok' but no URL available:`, result);
+                            return res.status(500).json({ 
+                                message: 'File processed but no URL available',
+                                error: result
+                            });
+                        }
+                        console.log(`[Mockup Request] ✓ File immediately ready: ${imageUrl}`);
+                    } else {
+                        console.error(`[Mockup Request] Unexpected file status: ${result.status}`, result);
+                        return res.status(500).json({ 
+                            message: `Unexpected file status: ${result.status}`,
+                            error: result
+                        });
+                    }
                 } else {
                     console.error(`[Mockup Request] Failed to upload image:`, uploadData);
-                    // Don't fall back to 3D model - return error
-                    return res.status(500).json({ message: 'Failed to upload image for 2D mockup generation' });
+                    return res.status(uploadResponse.status).json({ 
+                        message: 'Failed to upload image to Printful',
+                        error: uploadData
+                    });
                 }
-            } catch (uploadError) {
-                console.error(`[Mockup Request] Error uploading image:`, uploadError);
-                // Don't fall back to 3D model - return error
-                return res.status(500).json({ message: 'Failed to upload image for 2D mockup generation' });
+            } catch (error) {
+                console.error(`[Mockup Request] Error uploading image:`, error);
+                return res.status(500).json({ 
+                    message: 'Failed to upload image',
+                    error: error.message
+                });
             }
+        } else {
+            console.log(`[Mockup Request] Using provided URL: ${imageUrl}`);
         }
         
-        // Prepare the files array for Printful
+        // Get actual print area dimensions for proper aspect ratio preservation
+        let printAreaWidth = 1800; // Default fallback
+        let printAreaHeight = 2400; // Default fallback
+        
+        try {
+            console.log(`[Mockup Request] Fetching print area info for variant ${variantId}...`);
+            const printAreaResponse = await fetch(`https://api.printful.com/products/variant/${variantId}`, {
+                headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+            });
+            
+            if (printAreaResponse.ok) {
+                const printAreaData = await printAreaResponse.json();
+                const printfiles = printAreaData.result?.printfiles || [];
+                const frontPrintfile = printfiles.find(pf => pf.placement === (placement || 'front')) || printfiles[0];
+                
+                if (frontPrintfile?.print_area) {
+                    printAreaWidth = frontPrintfile.print_area.area_width || 1800;
+                    printAreaHeight = frontPrintfile.print_area.area_height || 2400;
+                    console.log(`[Mockup Request] Using print area dimensions: ${printAreaWidth}x${printAreaHeight}`);
+                } else {
+                    console.log(`[Mockup Request] No print area found, using defaults: ${printAreaWidth}x${printAreaHeight}`);
+                }
+            } else {
+                console.log(`[Mockup Request] Failed to fetch print area, using defaults: ${printAreaWidth}x${printAreaHeight}`);
+            }
+        } catch (error) {
+            console.log(`[Mockup Request] Error fetching print area, using defaults: ${printAreaWidth}x${printAreaHeight}`, error.message);
+        }
+
+        // Get actual artwork dimensions from the uploaded file
+        let actualArtworkWidth = 100; // Default fallback
+        let actualArtworkHeight = 100; // Default fallback
+        
+        try {
+            // Try to get dimensions from the uploaded file info
+            if (imageUrl && imageUrl.includes('files.cdn.printful.com')) {
+                // Extract file ID from URL to get file info
+                const fileIdMatch = imageUrl.match(/files\/([^\/]+)\//);
+                if (fileIdMatch) {
+                    const fileId = fileIdMatch[1];
+                    const fileInfoResponse = await fetch(`https://api.printful.com/files/${fileId}`, {
+                        headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+                    });
+                    
+                    if (fileInfoResponse.ok) {
+                        const fileInfo = await fileInfoResponse.json();
+                        if (fileInfo.result) {
+                            actualArtworkWidth = fileInfo.result.width || 100;
+                            actualArtworkHeight = fileInfo.result.height || 100;
+                            console.log(`[Mockup Request] Detected artwork dimensions: ${actualArtworkWidth}x${actualArtworkHeight}`);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.log(`[Mockup Request] Could not detect artwork dimensions, using defaults: ${actualArtworkWidth}x${actualArtworkHeight}`);
+        }
+
+        // Scale artwork to fit within print area while maintaining aspect ratio
+        const maxWidth = Math.min(printAreaWidth * 0.8, 1200); // Max 80% of print area width
+        const maxHeight = Math.min(printAreaHeight * 0.8, 1600); // Max 80% of print area height
+        
+        const scaleX = maxWidth / actualArtworkWidth;
+        const scaleY = maxHeight / actualArtworkHeight;
+        const scale = Math.min(scaleX, scaleY, 1); // Don't scale up, only down
+        
+        const artworkWidth = Math.round(actualArtworkWidth * scale);
+        const artworkHeight = Math.round(actualArtworkHeight * scale);
+        
+        // Center the artwork within the print area
+        const leftOffset = Math.max(0, (printAreaWidth - artworkWidth) / 2);
+        const topOffset = Math.max(0, (printAreaHeight - artworkHeight) / 2);
+
+        console.log(`[Mockup Request] Artwork positioning: ${artworkWidth}x${artworkHeight} at (${Math.round(leftOffset)}, ${Math.round(topOffset)})`);
+
+        // Prepare the files array for Printful with proper aspect ratio preservation
         const files = [
             {
                 placement: placement || 'front',
                 image_url: imageUrl,
                 position: {
-                    area_width: 1800,
-                    area_height: 2400,
-                    width: 1800,
-                    height: 2400,
-                    top: 0,
-                    left: 0
+                    area_width: printAreaWidth,
+                    area_height: printAreaHeight,
+                    width: artworkWidth,
+                    height: artworkHeight,
+                    top: Math.round(topOffset),
+                    left: Math.round(leftOffset)
                 }
             }
         ];
@@ -756,10 +961,10 @@ router.post('/products/:productId/blank-mockup', async (req, res) => {
     const { productId } = req.params;
     const { variantId, placement } = req.body;
     
-    // Helper function to get 2D variant image as fallback
+    // Helper function to get variant image as fallback
     const get2DFallback = async () => {
         try {
-            console.log('[Blank Mockup] Attempting 2D fallback...');
+            console.log('[Blank Mockup] Fetching variant image...');
             const variantResponse = await fetch(`https://api.printful.com/products/variant/${variantId}`, {
                 headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
             });
@@ -767,91 +972,93 @@ router.post('/products/:productId/blank-mockup', async (req, res) => {
             if (variantResponse.ok) {
                 const variantData = await variantResponse.json();
                 
-                // Look for full-size mockup files first (not thumbnails)
-                const files = variantData.result?.product?.files || [];
+                // Get actual product images (not printfile definitions)
+                const variantImage = variantData.result?.variant?.image;
+                const productImage = variantData.result?.product?.image;
+                const productThumbnail = variantData.result?.product?.thumbnail_url;
                 
-                // Try to find a preview-type file with full mockup
-                const previewFile = files.find(f => 
-                    f.type === 'preview' || 
-                    f.type === 'default' || 
-                    f.type === 'front' ||
-                    f.type === 'mockup'
-                );
+                // Use variant image first (most specific), then product image, then thumbnail
+                const mockupUrl = variantImage || productImage || productThumbnail;
                 
-                if (previewFile) {
-                    // Prefer preview_url (full size) over thumbnail
-                    const mockupUrl = previewFile.preview_url || previewFile.url;
-                    if (mockupUrl) {
-                        console.log('[Blank Mockup] Using 2D variant preview file:', mockupUrl);
-                        return { 
-                            mockup_url: mockupUrl,
-                            source: '2d_fallback'
-                        };
-                    }
-                }
-                
-                // Fallback to variant image (may be thumbnail)
-                const variantImage = variantData.result?.variant?.image || 
-                                     variantData.result?.product?.image;
-                
-                if (variantImage) {
-                    console.log('[Blank Mockup] Using 2D variant image (may be thumbnail):', variantImage);
+                if (mockupUrl) {
+                    console.log('[Blank Mockup] ✓ Using variant/product image:', mockupUrl);
                     return { 
-                        mockup_url: variantImage,
+                        mockup_url: mockupUrl,
                         source: '2d_fallback'
                     };
                 }
             }
         } catch (fallbackError) {
-            console.error('[Blank Mockup] 2D fallback also failed:', fallbackError);
+            console.error('[Blank Mockup] Fallback failed:', fallbackError);
         }
         return null;
     };
     
     try {
-        console.log(`[Blank Mockup] Generating 2D mockup for product ${productId}, variant ${variantId}, placement ${placement}`);
+        console.log(`[Blank Mockup] Request for product ${productId}, variant ${variantId}, placement ${placement}`);
         
         if (!variantId) {
             return res.status(400).json({ message: 'variantId is required in request body' });
         }
         
-        // Always try to generate actual 2D mockup first
-        console.log(`[Blank Mockup] Attempting 2D mockup via Printful API (this may take 10-30 seconds)`);
+        // Check if API key is configured
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            console.error('[Blank Mockup] PRINTFUL_API_KEY is not configured');
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
+        }
         
-        // Create a simple colored rectangle for 2D mockup
-        const coloredRectangle = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77mgAAAABJRU5ErkJggg==';
+        // Try to use 2D fallback directly (faster and more reliable)
+        console.log(`[Blank Mockup] Using 2D variant image fallback for faster loading`);
+        const fallback = await get2DFallback();
+        if (fallback) {
+            console.log(`[Blank Mockup] ✓ Returning 2D variant image`);
+            return res.json(fallback);
+        }
         
-        let imageUrl = coloredRectangle;
+        // If no fallback available, try to generate mockup
+        console.log(`[Blank Mockup] No 2D fallback found, attempting mockup generation via Printful API`);
         
-        // STEP 1: Upload transparent pixel to Printful (required - they don't accept data URLs)
+        // Create a simple transparent pixel for mockup generation
+        const transparentPixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77mgAAAABJRU5ErkJggg==';
+        
+        let imageUrl;
+        
+        // STEP 1: Save transparent pixel to server (Printful doesn't accept data URLs)
         try {
-            console.log('[Blank Mockup] Uploading transparent pixel to Printful...');
-            const uploadResponse = await fetch('https://api.printful.com/files', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
-                },
-                body: JSON.stringify({
-                    type: 'default',
-                    url: coloredRectangle
-                })
-            });
+            console.log('[Blank Mockup] Converting transparent pixel to public URL...');
             
-            const uploadData = await uploadResponse.json();
+            const fs = require('fs');
+            const path = require('path');
             
-            if (uploadResponse.ok && uploadData.result) {
-                imageUrl = uploadData.result.url || uploadData.result.preview_url;
-                console.log('[Blank Mockup] ✓ Uploaded transparent image:', imageUrl);
-            } else {
-                console.log('[Blank Mockup] Upload failed, trying to continue with data URL anyway');
-                // Continue with the data URL - sometimes Printful accepts it
-                imageUrl = transparentPixel;
+            // Extract base64 data
+            const matches = transparentPixel.match(/^data:([^;]+);base64,(.+)$/);
+            if (!matches) {
+                return res.status(500).json({ message: 'Invalid transparent pixel format' });
             }
-        } catch (uploadError) {
-            console.error('[Blank Mockup] Upload error:', uploadError);
-            // Don't fall back to 3D model - return error instead
-            return res.status(500).json({ message: 'Failed to upload image for 2D mockup generation' });
+            
+            const mimeType = matches[1];
+            const base64Data = matches[2];
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            const filename = 'transparent-pixel.png';
+            
+            // Save to public/temp-designs directory
+            const tempDir = path.join(__dirname, '..', 'public', 'temp-designs');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+            
+            const filepath = path.join(tempDir, filename);
+            fs.writeFileSync(filepath, buffer);
+            
+            // Create public URL
+            const baseUrl = process.env.PUBLIC_URL || 'http://localhost:5000';
+            imageUrl = `${baseUrl}/temp-designs/${filename}`;
+            
+            console.log('[Blank Mockup] ✓ Saved transparent pixel:', imageUrl);
+        } catch (error) {
+            console.error('[Blank Mockup] Error saving transparent pixel:', error);
+            return res.status(500).json({ message: 'Failed to save transparent pixel', error: error.message });
         }
         
         // STEP 2: Create 2D mockup task
@@ -975,171 +1182,34 @@ router.get('/products/:productId/flat-image', async (req, res) => {
         }
         
         const data = await response.json();
-        const files = data.result?.product?.files || [];
         
-        console.log(`[Flat Image] Found ${files.length} files for variant ${variantId}`);
-        console.log(`[Flat Image] Available file types:`, files.map(f => ({ type: f.type, placement: f.placement, url: f.preview_url || f.url })));
+        // Get the actual variant/product images (not printfile definitions)
+        const variantImage = data.result?.variant?.image;
+        const productImage = data.result?.product?.image;
+        const productThumbnail = data.result?.product?.thumbnail_url;
         
-        // Find flat file matching the placement (front, back, sleeve_left, sleeve_right, etc.)
-        let flatFile = files.find(f => 
-            f.type === 'flat' && 
-            f.placement === placement
-        );
+        console.log(`[Flat Image] Variant image:`, variantImage);
+        console.log(`[Flat Image] Product image:`, productImage);
         
-        // If no exact match, try to find any flat file for front placement as default
-        if (!flatFile && (!placement || placement === 'front')) {
-            flatFile = files.find(f => f.type === 'flat' && f.placement === 'front');
-        }
+        // Use variant image first (most specific), then product image, then thumbnail
+        let flatImageUrl = variantImage || productImage || productThumbnail;
         
-        // Try to find any flat file regardless of placement
-        if (!flatFile) {
-            flatFile = files.find(f => f.type === 'flat');
-        }
-        
-        // Fallback to default or front type files (but avoid preview/model images)
-        if (!flatFile) {
-            flatFile = files.find(f => 
-                (f.type === 'default' || f.type === 'front') && 
-                !f.type.includes('preview') && 
-                !f.type.includes('model')
-            );
-        }
-        
-        if (flatFile?.preview_url || flatFile?.url) {
-            const imageUrl = flatFile.preview_url || flatFile.url;
-            console.log(`[Flat Image] ✓ Found flat image:`, imageUrl);
+        if (flatImageUrl) {
+            console.log(`[Flat Image] ✓ Found flat image:`, flatImageUrl);
             return res.json({ 
-                flatImageUrl: imageUrl,
-                placement: flatFile.placement || placement || 'front',
-                type: flatFile.type
+                flatImageUrl: flatImageUrl,
+                placement: placement || 'front',
+                type: 'variant_image'
             });
         }
         
-        // Fallback to product thumbnail (but warn if it might be a model image)
-        const thumbnail = data.result?.product?.thumbnail_url;
-        if (thumbnail) {
-            console.log(`[Flat Image] ⚠️ Using thumbnail as fallback (may be model image):`, thumbnail);
-            return res.json({ flatImageUrl: thumbnail, placement: 'default', warning: 'Using thumbnail - may show model' });
-        }
-        
         // No image found
-        console.warn(`[Flat Image] No flat image found for variant ${variantId}, placement ${placement}`);
-        return res.status(404).json({ message: 'No flat image available for this variant' });
+        console.warn(`[Flat Image] No image found for variant ${variantId}`);
+        return res.status(404).json({ message: 'No image available for this variant' });
         
     } catch (error) {
         console.error('[Flat Image] Server error:', error);
         res.status(500).json({ message: 'Error fetching flat image', error: error.message });
-    }
-});
-
-// @route   GET api/catalog/products/:productId/templates
-// @desc    Get all product templates for a product
-// @access  Public
-router.get('/products/:productId/templates', async (req, res) => {
-    const { productId } = req.params;
-    
-    try {
-        console.log(`[Product Templates] Fetching templates for product ${productId}`);
-        
-        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
-        }
-        
-        // Fetch product templates from Printful
-        const response = await fetch(`https://api.printful.com/product-templates?product_id=${productId}`, {
-            headers: {
-                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            console.error(`[Product Templates] Failed to fetch templates:`, data);
-            return res.status(response.status).json({ 
-                message: 'Failed to fetch product templates',
-                error: data 
-            });
-        }
-        
-        const templates = data.result || [];
-        console.log(`[Product Templates] ✓ Found ${templates.length} templates for product ${productId}`);
-        
-        res.json({ templates });
-    } catch (error) {
-        console.error('[Product Templates] Server error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
-});
-
-// @route   GET api/catalog/products/:productId/templates/:variantId
-// @desc    Get specific product template for a variant
-// @access  Public
-router.get('/products/:productId/templates/:variantId', async (req, res) => {
-    const { productId, variantId } = req.params;
-    const { placement } = req.query;
-    
-    try {
-        console.log(`[Product Template] Fetching template for product ${productId}, variant ${variantId}, placement ${placement}`);
-        
-        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
-        }
-        
-        // Fetch all templates for this product
-        const response = await fetch(`https://api.printful.com/product-templates?product_id=${productId}`, {
-            headers: {
-                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            console.error(`[Product Template] Failed to fetch templates:`, data);
-            return res.status(response.status).json({ 
-                message: 'Failed to fetch product templates',
-                error: data 
-            });
-        }
-        
-        const templates = data.result || [];
-        
-        // Find template matching variant and placement
-        let template = templates.find(t => 
-            t.variant_id === parseInt(variantId) && 
-            t.placement === placement
-        );
-        
-        // If no exact match, try to find template for this variant with any placement
-        if (!template && placement === 'front') {
-            template = templates.find(t => t.variant_id === parseInt(variantId));
-        }
-        
-        // If still no match, try first template for this product with matching placement
-        if (!template) {
-            template = templates.find(t => t.placement === placement);
-        }
-        
-        // Last resort: first template for this product
-        if (!template && templates.length > 0) {
-            template = templates[0];
-        }
-        
-        if (template) {
-            console.log(`[Product Template] ✓ Found template:`, template.template_url || template.mockup_file_url);
-            res.json({ 
-                templateUrl: template.template_url || template.mockup_file_url,
-                placement: template.placement || placement || 'front',
-                variant_id: template.variant_id
-            });
-        } else {
-            console.warn(`[Product Template] No template found for variant ${variantId}, placement ${placement}`);
-            res.status(404).json({ message: 'No template available for this variant' });
-        }
-    } catch (error) {
-        console.error('[Product Template] Server error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
     }
 });
 

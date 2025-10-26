@@ -1,105 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Order = require('../models/Order');
 
-// @route   POST api/orders/create-payment-intent
-// @desc    Create a payment intent
-// @access  Private
-router.post('/create-payment-intent', auth, async (req, res) => {
-    const { amount } = req.body;
-
-    try {
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount,
-            currency: 'usd'
-        });
-
-        res.send({
-            clientSecret: paymentIntent.client_secret,
-            paymentIntentId: paymentIntent.id
-        });
-    } catch (error) {
-        console.error('Error creating payment intent:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// @route   POST api/orders/confirm-payment
-// @desc    Confirm a payment intent
-// @access  Private
-router.post('/confirm-payment', auth, async (req, res) => {
-    const { paymentIntentId } = req.body;
-
-    try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-        
-        // Determine return URL based on environment
-        const returnUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        
-        if (paymentIntent.status === 'succeeded') {
-            res.json({ 
-                success: true, 
-                status: paymentIntent.status,
-                message: 'Payment already confirmed' 
-            });
-        } else if (paymentIntent.status === 'requires_payment_method') {
-            // For testing purposes with live keys, we'll simulate a successful payment
-            // In production, this would be handled by Stripe Elements
-            try {
-                // Try to confirm with a test payment method first
-                const confirmedPayment = await stripe.paymentIntents.confirm(paymentIntentId, {
-                    payment_method: 'pm_card_visa',
-                    return_url: `${returnUrl}/profile` // Required by Stripe for payment confirmation
-                });
-                
-                res.json({ 
-                    success: true, 
-                    status: confirmedPayment.status,
-                    message: 'Payment confirmed successfully' 
-                });
-            } catch (confirmError) {
-                // If confirmation fails, simulate success for testing
-                console.log('Payment confirmation failed, simulating success for testing:', confirmError.message);
-                res.json({ 
-                    success: true, 
-                    status: 'succeeded',
-                    message: 'Payment confirmed successfully (simulated for testing)' 
-                });
-            }
-        } else {
-            res.status(400).json({ 
-                success: false, 
-                status: paymentIntent.status,
-                message: `Payment cannot be confirmed. Current status: ${paymentIntent.status}` 
-            });
-        }
-    } catch (error) {
-        console.error('Error confirming payment:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
-    }
-});
+// Note: Stripe payment endpoints removed - now using Printful checkout
 
 // @route   POST api/orders/create-order
-// @desc    Create a new order and submit to Printful
+// @desc    Create a new custom design order and submit to Printful
 // @access  Private
 router.post('/create-order', auth, async (req, res) => {
-    const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost, paymentIntentId } = req.body;
+    const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost } = req.body;
 
     try {
-        // Verify payment was confirmed before proceeding
-        if (!paymentIntentId) {
-            return res.status(400).json({ message: 'Payment intent ID is required' });
+        console.log(`[Custom Order] Creating custom design order for variant ${productVariantId || syncVariantId}`);
+        
+        // Check if API key is configured
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            console.error('[Custom Order] PRINTFUL_API_KEY is not configured');
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
         }
-
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-        if (paymentIntent.status !== 'succeeded') {
-            // For testing purposes, allow orders even if payment isn't technically succeeded
-            // In production, this should be strict
-            console.log('Payment status is not succeeded, but allowing order creation for testing. Status:', paymentIntent.status);
-        }
-        // Prepare Printful order data
+        // Prepare Printful order data for custom designs
         const items = [];
         if (syncVariantId) {
             items.push({
@@ -117,6 +37,8 @@ router.post('/create-order', auth, async (req, res) => {
         }
 
         const printfulOrderData = {
+            external_id: `moodynick-custom-${Date.now()}-${req.user.id}`,
+            shipping: 'STANDARD',
             recipient: {
                 name: shippingAddress.name,
                 address1: shippingAddress.address1,
@@ -126,11 +48,22 @@ router.post('/create-order', auth, async (req, res) => {
                 country_code: shippingAddress.country_code,
                 zip: shippingAddress.zip
             },
-            items
+            items,
+            retail_costs: {
+                currency: 'USD',
+                subtotal: totalCost || '0.00',
+                discount: '0.00',
+                shipping: '0.00', // Will be calculated by Printful
+                tax: '0.00' // Will be calculated by Printful
+            },
+            gift: {
+                subject: '',
+                message: ''
+            }
         };
 
         // Submit order to Printful
-        console.log('Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
+        console.log('[Custom Order] Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
         
         const printfulResponse = await fetch('https://api.printful.com/orders', {
             method: 'POST',
@@ -142,41 +75,222 @@ router.post('/create-order', auth, async (req, res) => {
         });
 
         const printfulData = await printfulResponse.json();
-        console.log('Printful response status:', printfulResponse.status);
-        console.log('Printful response data:', JSON.stringify(printfulData, null, 2));
+        console.log('[Custom Order] Printful response status:', printfulResponse.status);
+        console.log('[Custom Order] Printful response data:', JSON.stringify(printfulData, null, 2));
 
         if (!printfulResponse.ok) {
-            console.error('Printful order creation failed:', printfulData);
+            console.error('[Custom Order] Printful order creation failed:', printfulData);
             return res.status(printfulResponse.status).json({ 
                 message: 'Failed to create Printful order',
                 error: printfulData 
             });
         }
 
-        // Save order to database
+        const printfulOrder = printfulData.result;
+        
+        // Save order to database with pending status
         const order = new Order({
             user: req.user.id,
-            printfulOrderId: printfulData.result.id,
+            printfulOrderId: printfulOrder.id,
             productVariantId,
             syncVariantId,
             quantity: Number(quantity) || 1,
             design,
             shippingAddress,
-            totalCost,
-            stripePaymentIntentId: paymentIntentId,
-            status: 'confirmed'
+            totalCost: printfulOrder.costs?.total || totalCost,
+            status: 'pending_payment',
+            orderType: 'custom_design'
         });
 
         await order.save();
 
+        // Get checkout URL from Printful
+        const checkoutUrl = `https://www.printful.com/checkout/${printfulOrder.id}`;
+        
+        console.log(`[Custom Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
+
         res.json({ 
             success: true,
             order,
-            printfulOrder: printfulData.result 
+            printfulOrder,
+            checkoutUrl
         });
     } catch (error) {
         console.error('Error creating order:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/orders/create-store-order
+// @desc    Create a new order for store products and get Printful checkout URL
+// @access  Private
+router.post('/create-store-order', auth, async (req, res) => {
+    const { storeProductId, variantId, quantity = 1, shippingAddress } = req.body;
+
+    try {
+        console.log(`[Store Order] Creating order for store product ${storeProductId}, variant ${variantId}`);
+        
+        // Check if API key is configured
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            console.error('[Store Order] PRINTFUL_API_KEY is not configured');
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
+        }
+
+        // Prepare Printful order data for store products
+        const printfulOrderData = {
+            external_id: `moodynick-store-${Date.now()}-${req.user.id}`,
+            shipping: 'STANDARD',
+            recipient: {
+                name: shippingAddress.name,
+                address1: shippingAddress.address1,
+                address2: shippingAddress.address2 || '',
+                city: shippingAddress.city,
+                state_code: shippingAddress.state_code,
+                country_code: shippingAddress.country_code,
+                zip: shippingAddress.zip
+            },
+            items: [{
+                sync_variant_id: variantId,
+                quantity: Number(quantity) || 1
+            }],
+            retail_costs: {
+                currency: 'USD',
+                subtotal: '0.00', // Will be calculated by Printful
+                discount: '0.00',
+                shipping: '0.00', // Will be calculated by Printful
+                tax: '0.00' // Will be calculated by Printful
+            },
+            gift: {
+                subject: '',
+                message: ''
+            }
+        };
+
+        console.log('[Store Order] Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
+        
+        // Submit order to Printful
+        const printfulResponse = await fetch('https://api.printful.com/orders', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+            },
+            body: JSON.stringify(printfulOrderData)
+        });
+
+        const printfulData = await printfulResponse.json();
+        console.log('[Store Order] Printful response status:', printfulResponse.status);
+        console.log('[Store Order] Printful response data:', JSON.stringify(printfulData, null, 2));
+
+        if (!printfulResponse.ok) {
+            console.error('[Store Order] Printful order creation failed:', printfulData);
+            return res.status(printfulResponse.status).json({ 
+                message: 'Failed to create Printful order',
+                error: printfulData 
+            });
+        }
+
+        const printfulOrder = printfulData.result;
+        
+        // Save order to database with pending status
+        const order = new Order({
+            user: req.user.id,
+            printfulOrderId: printfulOrder.id,
+            storeProductId,
+            variantId,
+            quantity: Number(quantity) || 1,
+            shippingAddress,
+            totalCost: printfulOrder.costs?.total || '0.00',
+            status: 'pending_payment',
+            orderType: 'store_product'
+        });
+
+        await order.save();
+
+        // Get checkout URL from Printful
+        const checkoutUrl = `https://www.printful.com/checkout/${printfulOrder.id}`;
+        
+        console.log(`[Store Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
+
+        res.json({ 
+            success: true,
+            order,
+            printfulOrder,
+            checkoutUrl
+        });
+    } catch (error) {
+        console.error('[Store Order] Error creating store order:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/orders/printful-webhook
+// @desc    Handle webhook notifications from Printful
+// @access  Public (but should verify webhook signature)
+router.post('/printful-webhook', async (req, res) => {
+    try {
+        console.log('[Webhook] Received Printful webhook:', JSON.stringify(req.body, null, 2));
+        
+        const { type, data } = req.body;
+        
+        if (type === 'order_updated') {
+            const { order } = data;
+            const printfulOrderId = order.id;
+            
+            console.log(`[Webhook] Order ${printfulOrderId} updated. Status: ${order.status}`);
+            
+            // Find the order in our database
+            const dbOrder = await Order.findOne({ printfulOrderId });
+            
+            if (dbOrder) {
+                // Update order status based on Printful status
+                let newStatus = 'pending_payment';
+                
+                switch (order.status) {
+                    case 'draft':
+                        newStatus = 'pending_payment';
+                        break;
+                    case 'pending':
+                        newStatus = 'paid';
+                        break;
+                    case 'failed':
+                        newStatus = 'failed';
+                        break;
+                    case 'canceled':
+                        newStatus = 'cancelled';
+                        break;
+                    case 'onhold':
+                        newStatus = 'on_hold';
+                        break;
+                    case 'inprocess':
+                        newStatus = 'processing';
+                        break;
+                    case 'fulfilled':
+                        newStatus = 'fulfilled';
+                        break;
+                    case 'returned':
+                        newStatus = 'returned';
+                        break;
+                    default:
+                        newStatus = order.status;
+                }
+                
+                // Update the order
+                dbOrder.status = newStatus;
+                dbOrder.totalCost = order.costs?.total || dbOrder.totalCost;
+                await dbOrder.save();
+                
+                console.log(`[Webhook] ✓ Updated order ${printfulOrderId} status to ${newStatus}`);
+            } else {
+                console.log(`[Webhook] Order ${printfulOrderId} not found in database`);
+            }
+        }
+        
+        // Always respond with 200 to acknowledge receipt
+        res.status(200).json({ received: true });
+    } catch (error) {
+        console.error('[Webhook] Error processing webhook:', error);
+        res.status(500).json({ message: 'Webhook processing error', error: error.message });
     }
 });
 

@@ -335,22 +335,75 @@ router.get('/products/:productId', async (req, res) => {
   }
 });
 
+// Cache for store products (5 minute TTL)
+const storeProductsCache = {
+  data: null,
+  timestamp: 0,
+  TTL: 5 * 60 * 1000 // 5 minutes
+};
+
 // GET preselected products from Printful Store (Sync API)
 router.get('/store-products', async (req, res) => {
   try {
+    console.log('[Store Products] Fetching pre-made products from Printful store...');
+    
+    // Check cache first
+    const now = Date.now();
+    if (storeProductsCache.data && (now - storeProductsCache.timestamp) < storeProductsCache.TTL) {
+      console.log('[Store Products] ✓ Returning cached data');
+      return res.json(storeProductsCache.data);
+    }
+    
+    // Check if API key is configured
+    if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+      console.error('[Store Products] PRINTFUL_API_KEY is not configured');
+      return res.status(500).json({ 
+        message: 'PRINTFUL_API_KEY is not configured',
+        products: []
+      });
+    }
+    
     const response = await fetch('https://api.printful.com/store/products', {
       headers: {
         'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
       }
     });
     const data = await response.json();
+    
     if (!response.ok) {
+      console.error('[Store Products] Printful API error:', data);
       return res.status(response.status).json({ message: 'Failed to fetch store products', error: data });
     }
-    res.json(data);
+    
+    // Extract and transform products
+    const products = data.result || [];
+    console.log(`[Store Products] ✓ Found ${products.length} pre-made products`);
+    
+    // Transform to a consistent format
+    const transformedProducts = products.map(product => ({
+      id: product.id,
+      external_id: product.external_id,
+      name: product.name,
+      variants: product.variants || 0,
+      synced: product.synced,
+      thumbnail_url: product.thumbnail_url,
+      is_ignored: product.is_ignored,
+      type: 'store_product' // Mark as store product for frontend
+    }));
+    
+    const responseData = {
+      products: transformedProducts,
+      count: transformedProducts.length
+    };
+    
+    // Cache the result
+    storeProductsCache.data = responseData;
+    storeProductsCache.timestamp = now;
+    
+    res.json(responseData);
   } catch (error) {
-    console.error('Error fetching store products from Printful:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('[Store Products] Error fetching store products from Printful:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -410,31 +463,29 @@ router.post('/artwork/upload', auth, async (req, res) => {
 // @access  Public
 router.post('/products/:productId/mockup', async (req, res) => {
     const { productId } = req.params;
-    const { variantId, placements } = req.body;
+    const { variantId, placements: originalPlacements } = req.body;
 
     console.log(`[Mockup Request] Product: ${productId}, Variant: ${variantId}`);
     console.log(`[Mockup Request] Request body:`, JSON.stringify(req.body, null, 2));
     
     // Validate placements - handle both old and new format
-    let placementsArray = placements;
+    let placements = originalPlacements;
     
     // Backward compatibility: if placements is a single object, wrap it in an array
     if (placements && !Array.isArray(placements) && typeof placements === 'object') {
         console.log('[Mockup Request] Converting single placement object to array for backward compatibility');
-        placementsArray = [placements];
+        placements = [placements];
     }
     
-    if (!placementsArray || !Array.isArray(placementsArray) || placementsArray.length === 0) {
+    if (!placements || !Array.isArray(placements) || placements.length === 0) {
         console.error('[Mockup Request] Invalid or missing placements array');
         return res.status(400).json({ 
             message: 'Invalid request: placements must be a non-empty array',
-            received: typeof placements,
-            isArray: Array.isArray(placements),
-            placementsValue: placements
+            received: typeof originalPlacements,
+            isArray: Array.isArray(originalPlacements),
+            placementsValue: originalPlacements
         });
     }
-    
-    placements = placementsArray;
     
     console.log(`[Mockup Request] Generating mockups for ${placements.length} placements`);
     console.log(`[Mockup Request] Generating 2D flat mockup`);
@@ -827,7 +878,7 @@ router.get('/products/:productId/placements', async (req, res) => {
 });
 
 // @route   GET api/catalog/products/:productId/printfiles
-// @desc    Get print area dimensions for product variants
+// @desc    Get print area dimensions for product variants using Printful's printfiles API
 // @access  Public
 router.get('/products/:productId/printfiles', async (req, res) => {
     const { productId } = req.params;
@@ -840,72 +891,160 @@ router.get('/products/:productId/printfiles', async (req, res) => {
             return res.status(400).json({ message: 'variantId query parameter is required' });
         }
         
-        // Fetch variant details from Printful
-        const variantResponse = await fetch(`https://api.printful.com/products/variant/${variantId}`, {
+        // Check if API key is configured
+        if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
+            console.error('[Printfiles] PRINTFUL_API_KEY is not configured');
+            return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
+        }
+        
+        // Use the correct Printful API endpoint for printfiles
+        const printfilesResponse = await fetch(`https://api.printful.com/mockup-generator/printfiles/${productId}`, {
             headers: {
                 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
             }
         });
         
-        const variantData = await variantResponse.json();
+        const printfilesData = await printfilesResponse.json();
         
-        if (!variantResponse.ok) {
-            console.error('[Printfiles] Failed to fetch variant:', variantData);
-            return res.status(variantResponse.status).json({ 
-                message: 'Failed to fetch variant details',
-                error: variantData 
+        if (!printfilesResponse.ok) {
+            console.error('[Printfiles] Failed to fetch printfiles:', printfilesData);
+            return res.status(printfilesResponse.status).json({ 
+                message: 'Failed to fetch printfiles from Printful',
+                error: printfilesData 
             });
         }
         
-        // Extract printfile information
-        const printfiles = variantData.result?.product?.files || [];
+        // Extract printfiles from the response
+        let printfiles = printfilesData.result || [];
+
+        // Handle case where result might be an object instead of array
+        if (!Array.isArray(printfiles)) {
+            console.log('[Printfiles] Result is not an array, attempting to extract variants');
+            // If it's an object with variant_id keys, extract the values
+            if (typeof printfiles === 'object' && printfiles !== null) {
+                printfiles = Object.values(printfiles);
+            } else {
+                printfiles = [];
+            }
+        }
+
         const variant_printfiles = [];
         
-        printfiles.forEach(file => {
-            if (file.type === 'default' && file.title) {
-                // Determine placement from title
-                const title = file.title.toLowerCase();
-                let placement = 'front';
-                
-                if (title.includes('back')) placement = 'back';
-                else if (title.includes('left') && title.includes('sleeve')) placement = 'sleeve_left';
-                else if (title.includes('right') && title.includes('sleeve')) placement = 'sleeve_right';
-                else if (title.includes('left')) placement = 'left';
-                else if (title.includes('right')) placement = 'right';
-                
-                // Extract print area dimensions
-                const printfile = {
-                    placement: placement,
-                    display_name: file.title,
-                    print_area: {
-                        area_width: file.width || 1800,
-                        area_height: file.height || 2400,
-                        width: file.width || 1800,
-                        height: file.height || 2400,
-                        print_area_width: file.width || 1800,
-                        print_area_height: file.height || 2400
+        console.log(`[Printfiles] Found ${printfiles.length} printfiles from Printful API`);
+        
+        // Map placement IDs to actual dimensions based on Printful's standard dimensions
+        // These are the standard dimensions for DTG printing at 300 DPI
+        const placementDimensions = {
+            'front': { width: 1800, height: 2400, name: 'Front Print' }, // 6" x 8" at 300 DPI
+            'front_large': { width: 4500, height: 5400, name: 'Large Front Print' }, // 15" x 18" at 300 DPI
+            'back': { width: 1800, height: 2400, name: 'Back Print' }, // 6" x 8" at 300 DPI
+            'sleeve_left': { width: 1200, height: 1200, name: 'Left Sleeve' }, // 4" x 4" at 300 DPI
+            'sleeve_right': { width: 1200, height: 1200, name: 'Right Sleeve' }, // 4" x 4" at 300 DPI
+            'label_inside': { width: 300, height: 300, name: 'Inside Label' }, // 1" x 1" at 300 DPI
+            'label_outside': { width: 300, height: 300, name: 'Outside Label' } // 1" x 1" at 300 DPI
+        };
+        
+        // Process each variant's placements
+        printfiles.forEach(variant => {
+            if (variant.placements) {
+                Object.entries(variant.placements).forEach(([placement, placementId]) => {
+                    const dimensions = placementDimensions[placement];
+                    if (dimensions) {
+                        console.log(`[Printfiles] ${placement}: ${dimensions.width}x${dimensions.height} pixels (${dimensions.name})`);
+                        
+                        const printfile = {
+                            placement: placement,
+                            display_name: dimensions.name,
+                            print_area: {
+                                area_width: dimensions.width,
+                                area_height: dimensions.height,
+                                width: dimensions.width,
+                                height: dimensions.height,
+                                print_area_width: dimensions.width,
+                                print_area_height: dimensions.height
+                            }
+                        };
+                        
+                        variant_printfiles.push(printfile);
                     }
-                };
-                
-                variant_printfiles.push(printfile);
+                });
             }
         });
         
-        // If no printfiles found, return defaults
+        // If no printfiles found, return product-specific defaults based on product type
         if (variant_printfiles.length === 0) {
-            console.log('[Printfiles] No printfiles found, returning defaults');
-            variant_printfiles.push({
-                placement: 'front',
-                display_name: 'Front Print',
-                print_area: {
-                    area_width: 1800,
-                    area_height: 2400,
-                    width: 1800,
-                    height: 2400,
-                    print_area_width: 1800,
-                    print_area_height: 2400
+            console.log('[Printfiles] No printfiles found, returning product-specific defaults');
+            
+            // Get product info to determine appropriate defaults
+            try {
+                const productResponse = await fetch(`https://api.printful.com/products/${productId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+                    }
+                });
+                
+                if (productResponse.ok) {
+                    const productData = await productResponse.json();
+                    const productType = productData.result?.product?.type_name?.toLowerCase() || '';
+                    
+                    // Set appropriate defaults based on product type
+                    let defaultWidth = 1800;  // 6" at 300 DPI (standard t-shirt)
+                    let defaultHeight = 2400; // 8" at 300 DPI (standard t-shirt)
+                    
+                    if (productType.includes('tote') || productType.includes('bag') || productType.includes('tote bag')) {
+                        defaultWidth = 2700;  // 9" at 300 DPI
+                        defaultHeight = 3600; // 12" at 300 DPI
+                    } else if (productType.includes('hoodie') || productType.includes('sweatshirt') || productType.includes('pullover')) {
+                        defaultWidth = 2400;  // 8" at 300 DPI
+                        defaultHeight = 3000; // 10" at 300 DPI
+                    } else if (productType.includes('mug') || productType.includes('drinkware') || productType.includes('coffee mug')) {
+                        defaultWidth = 1800;  // 6" at 300 DPI
+                        defaultHeight = 1800; // 6" at 300 DPI (square)
+                    } else if (productType.includes('poster') || productType.includes('print')) {
+                        defaultWidth = 3600;  // 12" at 300 DPI
+                        defaultHeight = 4800; // 16" at 300 DPI
+                    } else if (productType.includes('sticker') || productType.includes('label')) {
+                        defaultWidth = 600;   // 2" at 300 DPI
+                        defaultHeight = 600;  // 2" at 300 DPI (square)
+                    } else if (productType.includes('phone case') || productType.includes('case')) {
+                        defaultWidth = 1200;  // 4" at 300 DPI
+                        defaultHeight = 2100; // 7" at 300 DPI
+                    }
+                    
+                    console.log(`[Printfiles] Using ${productType} defaults: ${defaultWidth}x${defaultHeight}`);
+                    
+                    variant_printfiles.push({
+                        placement: 'front',
+                        display_name: 'Front Print Area',
+                        print_area: {
+                            area_width: defaultWidth,
+                            area_height: defaultHeight,
+                            width: defaultWidth,
+                            height: defaultHeight,
+                            print_area_width: defaultWidth,
+                            print_area_height: defaultHeight
+                        }
+                    });
                 }
-            });
+            } catch (error) {
+                console.error('[Printfiles] Error fetching product info for defaults:', error);
+            }
+            
+            // Fallback to standard t-shirt dimensions if all else fails
+            if (variant_printfiles.length === 0) {
+                variant_printfiles.push({
+                    placement: 'front',
+                    display_name: 'Front Print Area',
+                    print_area: {
+                        area_width: 1800,
+                        area_height: 2400,
+                        width: 1800,
+                        height: 2400,
+                        print_area_width: 1800,
+                        print_area_height: 2400
+                    }
+                });
+            }
         }
         
         console.log(`[Printfiles] Returning ${variant_printfiles.length} printfiles`);

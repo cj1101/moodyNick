@@ -41,7 +41,7 @@ async function analyzeProductWithGemini(imageBuffer) {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
         
         const prompt = `You are analyzing a product photograph. Describe the product's silhouette and key visual features in a way that would help create a simple outline/silhouette drawing. Focus on:
 - Overall shape (t-shirt, hoodie, mug, bag, etc.)

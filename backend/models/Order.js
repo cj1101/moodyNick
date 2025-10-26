@@ -41,11 +41,20 @@ const OrderSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        default: 'pending'
+        default: 'pending_payment'
+    },
+    orderType: {
+        type: String,
+        enum: ['custom_design', 'store_product'],
+        default: 'custom_design'
+    },
+    storeProductId: {
+        type: String,
+        required: false
     },
     stripePaymentIntentId: {
         type: String,
-        required: true
+        required: false // No longer required since we're using Printful checkout
     }
 }, { timestamps: true });
 

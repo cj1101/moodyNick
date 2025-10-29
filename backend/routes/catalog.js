@@ -820,8 +820,18 @@ router.get('/products/:productId/placements', async (req, res) => {
         // Get the first variant to check available placements
         const variants = productData.result?.variants || [];
         if (variants.length === 0) {
-            console.log('[Placements] No variants found for product');
-            return res.json({ placements: ['front'], placementLabels: { front: 'Front' } });
+            console.log('[Placements] No variants found for product, using fallback');
+            return res.json({ 
+                placements: ['front', 'back'], 
+                placementLabels: { 
+                    front: 'Front', 
+                    back: 'Back',
+                    left: 'Left',
+                    right: 'Right',
+                    sleeve_left: 'Left Sleeve',
+                    sleeve_right: 'Right Sleeve'
+                } 
+            });
         }
         
         // Fetch variant details to get printfile placements
@@ -836,17 +846,31 @@ router.get('/products/:productId/placements', async (req, res) => {
         
         if (!variantResponse.ok) {
             console.error('[Placements] Failed to fetch variant:', variantData);
-            return res.json({ placements: ['front'], placementLabels: { front: 'Front' } });
+            console.log('[Placements] Using fallback placements for apparel');
+            return res.json({ 
+                placements: ['front', 'back'], 
+                placementLabels: { 
+                    front: 'Front', 
+                    back: 'Back',
+                    left: 'Left',
+                    right: 'Right',
+                    sleeve_left: 'Left Sleeve',
+                    sleeve_right: 'Right Sleeve'
+                } 
+            });
         }
         
         // Extract placements from printfiles
         const printfiles = variantData.result?.product?.files || [];
         const placementSet = new Set();
         
+        console.log(`[Placements] Found ${printfiles.length} printfiles:`, printfiles.map(f => ({ type: f.type, title: f.title })));
+        
         printfiles.forEach(file => {
             if (file.type === 'default' && file.title) {
                 // Extract placement from title (e.g., "Front print" -> "front")
                 const title = file.title.toLowerCase();
+                console.log(`[Placements] Processing file: "${file.title}" -> "${title}"`);
                 if (title.includes('front')) placementSet.add('front');
                 if (title.includes('back')) placementSet.add('back');
                 if (title.includes('left') && title.includes('sleeve')) placementSet.add('sleeve_left');
@@ -856,8 +880,22 @@ router.get('/products/:productId/placements', async (req, res) => {
             }
         });
         
-        // If no placements found, default to front
-        const placements = placementSet.size > 0 ? Array.from(placementSet) : ['front'];
+        console.log(`[Placements] Detected placements:`, Array.from(placementSet));
+        
+        // If no placements found, default to front and back for apparel
+        let placements;
+        if (placementSet.size === 0) {
+            console.log('[Placements] No placements detected, using defaults for apparel');
+            placements = ['front', 'back'];
+        } else if (placementSet.size === 1) {
+            console.log('[Placements] Only one placement detected, adding back for apparel');
+            placements = Array.from(placementSet);
+            if (!placements.includes('back')) {
+                placements.push('back');
+            }
+        } else {
+            placements = Array.from(placementSet);
+        }
         
         // Create user-friendly labels
         const placementLabels = {

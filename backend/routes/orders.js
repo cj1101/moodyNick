@@ -19,6 +19,27 @@ router.post('/create-order', auth, async (req, res) => {
             console.error('[Custom Order] PRINTFUL_API_KEY is not configured');
             return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
         }
+
+        // Validate shipping address - ensure state and ZIP are valid
+        const validStates = {
+            'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+            'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+            'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+            'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+            'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+            'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+            'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+            'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+            'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+            'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+        };
+
+        if (!validStates[shippingAddress.state_code]) {
+            return res.status(400).json({ 
+                message: 'Invalid state code. Please use a valid 2-letter state abbreviation.',
+                validStates: Object.keys(validStates)
+            });
+        }
         // Prepare Printful order data for custom designs
         const items = [];
         if (syncVariantId) {
@@ -37,29 +58,16 @@ router.post('/create-order', auth, async (req, res) => {
         }
 
         const printfulOrderData = {
-            external_id: `moodynick-custom-${Date.now()}-${req.user.id}`,
-            shipping: 'STANDARD',
             recipient: {
                 name: shippingAddress.name,
                 address1: shippingAddress.address1,
                 address2: shippingAddress.address2 || '',
                 city: shippingAddress.city,
                 state_code: shippingAddress.state_code,
-                country_code: shippingAddress.country_code,
+                country_code: shippingAddress.country_code || 'US',
                 zip: shippingAddress.zip
             },
-            items,
-            retail_costs: {
-                currency: 'USD',
-                subtotal: totalCost || '0.00',
-                discount: '0.00',
-                shipping: '0.00', // Will be calculated by Printful
-                tax: '0.00' // Will be calculated by Printful
-            },
-            gift: {
-                subject: '',
-                message: ''
-            }
+            items
         };
 
         // Submit order to Printful
@@ -104,8 +112,8 @@ router.post('/create-order', auth, async (req, res) => {
 
         await order.save();
 
-        // Get checkout URL from Printful
-        const checkoutUrl = `https://www.printful.com/checkout/${printfulOrder.id}`;
+        // Get checkout URL from Printful response
+        const checkoutUrl = printfulOrder.dashboard_url || `https://www.printful.com/checkout/${printfulOrder.id}`;
         
         console.log(`[Custom Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
 
@@ -129,6 +137,8 @@ router.post('/create-store-order', auth, async (req, res) => {
 
     try {
         console.log(`[Store Order] Creating order for store product ${storeProductId}, variant ${variantId}`);
+        console.log(`[Store Order] Request body:`, JSON.stringify(req.body, null, 2));
+        console.log(`[Store Order] User ID:`, req.user.id);
         
         // Check if API key is configured
         if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
@@ -136,34 +146,77 @@ router.post('/create-store-order', auth, async (req, res) => {
             return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
         }
 
+        // For store products, we need to get the sync variant ID from the store product
+        // First, get the store product details to find the correct sync variant
+        const storeProductResponse = await fetch(`https://api.printful.com/store/products/${storeProductId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+            }
+        });
+
+        if (!storeProductResponse.ok) {
+            const errorData = await storeProductResponse.json();
+            console.error('[Store Order] Failed to get store product:', errorData);
+            return res.status(storeProductResponse.status).json({ 
+                message: 'Failed to get store product details',
+                error: errorData 
+            });
+        }
+
+        const storeProductData = await storeProductResponse.json();
+        const storeProduct = storeProductData.result;
+        
+        // Find the variant that matches our variantId (which should be the sync_variant_id)
+        const targetVariant = storeProduct.sync_variants.find(v => v.id === variantId);
+        if (!targetVariant) {
+            console.error('[Store Order] Variant not found in store product:', variantId);
+            return res.status(400).json({ 
+                message: 'Variant not found in store product',
+                availableVariants: storeProduct.sync_variants.map(v => ({ 
+                    sync_variant_id: v.id, 
+                    size: v.size, 
+                    color: v.color 
+                }))
+            });
+        }
+
+        // Validate shipping address - ensure state and ZIP are valid
+        const validStates = {
+            'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+            'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+            'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+            'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+            'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+            'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+            'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+            'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+            'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+            'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+        };
+
+        if (!validStates[shippingAddress.state_code]) {
+            return res.status(400).json({ 
+                message: 'Invalid state code. Please use a valid 2-letter state abbreviation.',
+                validStates: Object.keys(validStates)
+            });
+        }
+
         // Prepare Printful order data for store products
         const printfulOrderData = {
-            external_id: `moodynick-store-${Date.now()}-${req.user.id}`,
-            shipping: 'STANDARD',
             recipient: {
                 name: shippingAddress.name,
                 address1: shippingAddress.address1,
                 address2: shippingAddress.address2 || '',
                 city: shippingAddress.city,
                 state_code: shippingAddress.state_code,
-                country_code: shippingAddress.country_code,
+                country_code: shippingAddress.country_code || 'US',
                 zip: shippingAddress.zip
             },
             items: [{
                 sync_variant_id: variantId,
                 quantity: Number(quantity) || 1
-            }],
-            retail_costs: {
-                currency: 'USD',
-                subtotal: '0.00', // Will be calculated by Printful
-                discount: '0.00',
-                shipping: '0.00', // Will be calculated by Printful
-                tax: '0.00' // Will be calculated by Printful
-            },
-            gift: {
-                subject: '',
-                message: ''
-            }
+            }]
         };
 
         console.log('[Store Order] Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
@@ -184,9 +237,12 @@ router.post('/create-store-order', auth, async (req, res) => {
 
         if (!printfulResponse.ok) {
             console.error('[Store Order] Printful order creation failed:', printfulData);
+            console.error('[Store Order] Printful response status:', printfulResponse.status);
+            console.error('[Store Order] Printful response headers:', printfulResponse.headers);
             return res.status(printfulResponse.status).json({ 
                 message: 'Failed to create Printful order',
-                error: printfulData 
+                error: printfulData,
+                statusCode: printfulResponse.status
             });
         }
 
@@ -207,8 +263,8 @@ router.post('/create-store-order', auth, async (req, res) => {
 
         await order.save();
 
-        // Get checkout URL from Printful
-        const checkoutUrl = `https://www.printful.com/checkout/${printfulOrder.id}`;
+        // Get checkout URL from Printful response
+        const checkoutUrl = printfulOrder.dashboard_url || `https://www.printful.com/checkout/${printfulOrder.id}`;
         
         console.log(`[Store Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
 

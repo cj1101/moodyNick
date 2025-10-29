@@ -449,24 +449,54 @@ router.get('/store-products/:id', async (req, res) => {
       });
     }
     
+    // Debug logging to see what Printful actually returns
+    console.log(`[Store Product Details] Raw sync_variants data:`, JSON.stringify(variants, null, 2));
+    
     // Transform variants to match frontend expectations
-    const transformedVariants = variants.map(variant => ({
-      id: variant.id,
-      variant_id: variant.id,
-      product_id: variant.product_id,
-      name: variant.name,
-      size: variant.size,
-      color: variant.color,
-      color_code: variant.color_code,
-      color_code2: variant.color_code2,
-      image: variant.image,
-      price: variant.price,
-      retail_price: variant.price, // Map price to retail_price for frontend compatibility
-      currency: 'USD',
-      in_stock: variant.in_stock,
-      availability_regions: variant.availability_regions,
-      availability_status: variant.availability_status,
-      material: variant.material
+    // Note: sync_variants don't include pricing, so we'll fetch it from the actual product variant
+    const transformedVariants = await Promise.all(variants.map(async (variant) => {
+      let price = '0.00';
+      let retailPrice = '0.00';
+      
+      try {
+        // Fetch detailed variant information to get pricing
+        const variantResponse = await fetch(`https://api.printful.com/products/variant/${variant.id}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
+          }
+        });
+        
+        if (variantResponse.ok) {
+          const variantData = await variantResponse.json();
+          const variantDetails = variantData.result?.variant;
+          if (variantDetails) {
+            price = variantDetails.price || '0.00';
+            retailPrice = variantDetails.retail_price || variantDetails.price || '0.00';
+            console.log(`[Store Product Details] Variant ${variant.id} price: ${price}, retail_price: ${retailPrice}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[Store Product Details] Error fetching variant ${variant.id} details:`, error.message);
+      }
+      
+      return {
+        id: variant.id,
+        variant_id: variant.id,
+        product_id: variant.product_id,
+        name: variant.name,
+        size: variant.size,
+        color: variant.color,
+        color_code: variant.color_code,
+        color_code2: variant.color_code2,
+        image: variant.image,
+        price: price,
+        retail_price: retailPrice,
+        currency: 'USD',
+        in_stock: variant.availability_status === 'active', // Check availability_status for stock
+        availability_regions: variant.availability_regions,
+        availability_status: variant.availability_status,
+        material: variant.material
+      };
     }));
     
     // Transform the response to match frontend expectations

@@ -451,15 +451,20 @@ router.get('/store-products/:id', async (req, res) => {
     
     // Debug logging to see what Printful actually returns
     console.log(`[Store Product Details] Raw sync_variants data:`, JSON.stringify(variants, null, 2));
+    console.log(`[Store Product Details] Raw sync_product data:`, JSON.stringify(storeProduct, null, 2));
+    
+    // Check if sync_variants have pricing directly
+    const firstVariant = variants[0];
+    console.log(`[Store Product Details] First variant fields:`, Object.keys(firstVariant || {}));
     
     // Transform variants to match frontend expectations
-    // Note: sync_variants don't include pricing, so we'll fetch it from the actual product variant
+    // For sync products, we need to fetch pricing from the regular product variant API
     const transformedVariants = await Promise.all(variants.map(async (variant) => {
       let price = '0.00';
       let retailPrice = '0.00';
       
       try {
-        // Fetch detailed variant information to get pricing
+        // Try to get pricing from the regular product variant API
         const variantResponse = await fetch(`https://api.printful.com/products/variant/${variant.id}`, {
           headers: {
             'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
@@ -472,11 +477,20 @@ router.get('/store-products/:id', async (req, res) => {
           if (variantDetails) {
             price = variantDetails.price || '0.00';
             retailPrice = variantDetails.retail_price || variantDetails.price || '0.00';
-            console.log(`[Store Product Details] Variant ${variant.id} price: ${price}, retail_price: ${retailPrice}`);
+            console.log(`[Store Product Details] Variant ${variant.id} from product API - price: ${price}, retail_price: ${retailPrice}`);
           }
+        } else {
+          console.log(`[Store Product Details] Failed to fetch variant ${variant.id} from product API:`, variantResponse.status);
         }
       } catch (error) {
-        console.error(`[Store Product Details] Error fetching variant ${variant.id} details:`, error.message);
+        console.error(`[Store Product Details] Error fetching variant ${variant.id} from product API:`, error.message);
+      }
+      
+      // If we still don't have pricing, check if sync_variant has it directly
+      if (price === '0.00' && retailPrice === '0.00') {
+        price = variant.retail_price || variant.price || '0.00';
+        retailPrice = variant.retail_price || variant.price || '0.00';
+        console.log(`[Store Product Details] Using sync_variant pricing for ${variant.id} - price: ${price}, retail_price: ${retailPrice}`);
       }
       
       return {

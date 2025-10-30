@@ -798,8 +798,13 @@ router.post('/products/:productId/mockup', async (req, res) => {
             // Upload design to Printful
             const imageUrl = await uploadDesignToPrintful(designDataUrl, placement);
             
-            // Get print area dimensions for this placement
-            const placementPrintfile = printfiles.find(pf => pf.placement === placement) || printfiles[0];
+            // Get print area dimensions for this placement (avoid falling back to the first entry which can be the other side)
+            let placementPrintfile = printfiles.find(pf => pf.placement === placement);
+            if (!placementPrintfile) {
+                // Try infer by display name hints
+                const hint = placement === 'back' ? 'back' : placement === 'front' ? 'front' : placement;
+                placementPrintfile = printfiles.find(pf => (pf.display_name || '').toLowerCase().includes(hint));
+            }
             const printAreaWidth = placementPrintfile?.print_area?.area_width || 1800;
             const printAreaHeight = placementPrintfile?.print_area?.area_height || 2400;
             
@@ -916,17 +921,52 @@ router.post('/products/:productId/mockup', async (req, res) => {
             return res.status(408).json({ message: 'Mockup generation timed out. Please try again.' });
         }
 
-        // Map mockups to their placements
-        const mockupsWithPlacement = mockupResult.mockups.map((mockup, index) => ({
-            placement: files[index]?.placement || 'unknown',
-            mockup_url: mockup.mockup_url || mockup.url,
-            placement_id: mockup.placement,
-            variant_id: mockup.variant_id
-        }));
+        // Map mockups to placements by placement id, and filter to only requested placements
+        const requestedPlacementSet = new Set((files || []).map(f => f.placement));
+        console.log('[Mockup Mapping] Requested placements:', Array.from(requestedPlacementSet));
 
-        res.json({ 
+        // Build placement -> file index map in case we need index fallback
+        const placementToIndex = {};
+        (files || []).forEach((f, idx) => { placementToIndex[f.placement] = idx; });
+
+        const mapped = [];
+        (mockupResult.mockups || []).forEach((mockup, index) => {
+            const mockupPlacement = mockup.placement || null; // Printful-provided placement id when available
+            let resolvedPlacement = mockupPlacement && requestedPlacementSet.has(mockupPlacement)
+              ? mockupPlacement
+              : null;
+
+            if (!resolvedPlacement) {
+                // Fallback: try to infer by index
+                const byIndex = files[index]?.placement;
+                if (byIndex && requestedPlacementSet.has(byIndex)) {
+                    console.warn('[Mockup Mapping] Missing/unknown mockup.placement; falling back to index mapping:', { index, byIndex });
+                    resolvedPlacement = byIndex;
+                }
+            }
+
+            if (!resolvedPlacement) {
+                console.warn('[Mockup Mapping] Dropping unexpected mockup without matching requested placement', {
+                    mockupPlacement,
+                    index
+                });
+                return; // drop unexpected/mirrored results
+            }
+
+            mapped.push({
+                placement: resolvedPlacement,
+                mockup_url: mockup.mockup_url || mockup.url,
+                placement_id: mockup.placement,
+                variant_id: mockup.variant_id
+            });
+        });
+
+        console.log('[Mockup Mapping] Returned placements:', (mockupResult.mockups || []).map(m => m.placement));
+        console.log('[Mockup Mapping] Final mapped placements:', mapped.map(m => m.placement));
+
+        res.json({
             success: true,
-            mockups: mockupsWithPlacement,
+            mockups: mapped,
             source: 'multi_placement_generated'
         });
     } catch (error) {

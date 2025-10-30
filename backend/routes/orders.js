@@ -9,7 +9,7 @@ const Order = require('../models/Order');
 // @desc    Create a new custom design order and submit to Printful
 // @access  Private
 router.post('/create-order', auth, async (req, res) => {
-    const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost } = req.body;
+    const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost, promoCode } = req.body;
 
     try {
         console.log(`[Custom Order] Creating custom design order for variant ${productVariantId || syncVariantId}`);
@@ -45,6 +45,7 @@ router.post('/create-order', auth, async (req, res) => {
         if (syncVariantId) {
             // For store sync variants, compute premium retail price server-side
             let retailPriceStr = undefined;
+            const promoApplies = typeof promoCode === 'string' && promoCode.trim() === 'nickfriendsfamily';
             try {
                 const variantResp = await fetch(`https://api.printful.com/store/variants/${syncVariantId}`, {
                     headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
@@ -62,9 +63,14 @@ router.post('/create-order', auth, async (req, res) => {
                         proxyCost = parseFloat(detailData.result?.variant?.price) || 0;
                         categoryLabel = detailData.result?.product?.type_name || categoryLabel;
                     }
-                    const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
-                    const retailCents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
-                    retailPriceStr = formatPriceUSD(retailCents);
+                    if (!promoApplies) {
+                        const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                        const retailCents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                        retailPriceStr = formatPriceUSD(retailCents);
+                    } else {
+                        // For promo, do NOT override retail; leave undefined so Printful uses store retail
+                        retailPriceStr = undefined;
+                    }
                 }
             } catch (e) {
                 console.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
@@ -77,8 +83,9 @@ router.post('/create-order', auth, async (req, res) => {
         } else if (productVariantId) {
             // For custom designs, prefer frontend totalCost if provided to include placements
             let retailPriceStr = undefined;
+            const promoApplies = typeof promoCode === 'string' && promoCode.trim() === 'nickfriendsfamily';
             const qty = Number(quantity) || 1;
-            if (totalCost && Number(totalCost) > 0) {
+            if (!promoApplies && totalCost && Number(totalCost) > 0) {
                 const perItem = Math.max(0, Number(totalCost) / qty);
                 retailPriceStr = perItem.toFixed(2);
             } else {
@@ -90,10 +97,15 @@ router.post('/create-order', auth, async (req, res) => {
                     if (resp.ok) {
                         const data = await resp.json();
                         const proxyCost = parseFloat(data.result?.variant?.price) || 0;
-                        const categoryLabel = data.result?.product?.type_name || 'Unisex tee';
-                        const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
-                        const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
-                        retailPriceStr = formatPriceUSD(cents);
+                        if (!promoApplies) {
+                            const categoryLabel = data.result?.product?.type_name || 'Unisex tee';
+                            const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                            const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                            retailPriceStr = formatPriceUSD(cents);
+                        } else {
+                            // Promo: charge regular retail (base variant price)
+                            retailPriceStr = (Math.round(proxyCost * 100) / 100).toFixed(2);
+                        }
                     }
                 } catch (e) {
                     console.warn('[Custom Order] Could not compute premium retail price:', e.message);
@@ -185,7 +197,7 @@ router.post('/create-order', auth, async (req, res) => {
 // @desc    Create a new order for store products and get Printful checkout URL
 // @access  Private
 router.post('/create-store-order', auth, async (req, res) => {
-    const { storeProductId, variantId, quantity = 1, shippingAddress } = req.body;
+    const { storeProductId, variantId, quantity = 1, shippingAddress, promoCode } = req.body;
 
     try {
         console.log(`[Store Order] Creating order for store product ${storeProductId}, variant ${variantId}`);
@@ -257,6 +269,7 @@ router.post('/create-store-order', auth, async (req, res) => {
         // Prepare Printful order data for store products
         // Compute multiplier-based retail price override when possible
         let retailPriceStr = undefined;
+        const promoApplies = typeof promoCode === 'string' && promoCode.trim() === 'nickfriendsfamily';
         try {
             // Get underlying product variant to estimate cost
             const storeVariantResp = await fetch(`https://api.printful.com/store/variants/${variantId}`, {
@@ -273,9 +286,14 @@ router.post('/create-store-order', auth, async (req, res) => {
                         const detailData = await detailResp.json();
                         const proxyCost = parseFloat(detailData.result?.variant?.price) || 0;
                         const categoryLabel = detailData.result?.product?.type_name || 'Unisex tee';
-                        const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
-                        const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
-                        retailPriceStr = formatPriceUSD(cents);
+                        if (!promoApplies) {
+                            const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                            const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                            retailPriceStr = formatPriceUSD(cents);
+                        } else {
+                            // For promo, do NOT override retail; leave undefined so Printful uses store retail
+                            retailPriceStr = undefined;
+                        }
                     }
                 }
             }

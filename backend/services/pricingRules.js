@@ -1,6 +1,6 @@
 // Pricing rules service: computes premium retail prices with .99 rounding and category floors
 
-const DEFAULT_MULTIPLIER = Number(process.env.PRICE_MULTIPLIER || 2.8);
+const DEFAULT_MULTIPLIER = Number(process.env.PRICE_MULTIPLIER || 2.4);
 
 // Floors in USD for the “premium vibe”
 const CATEGORY_FLOORS_USD = {
@@ -37,11 +37,10 @@ function centsToUsdString(cents) {
 	return (cents / 100).toFixed(2);
 }
 
-// Round to x.99 in cents
+// Round to nearest x.00 in cents
 function roundTo99(cents) {
-	if (!Number.isFinite(cents)) return 0;
-	const dollars = Math.floor(cents / 100);
-	return dollars * 100 + 99; // e.g., $40.99
+    if (!Number.isFinite(cents)) return 0;
+    return Math.round(cents / 100) * 100; // e.g., $40.00
 }
 
 function getCategoryFloorCents(categoryLabel) {

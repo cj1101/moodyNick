@@ -6,6 +6,10 @@ const designSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  productId: {
+    type: Number,
+    required: false,
+  },
   productVariantId: {
     type: Number,
     required: true,

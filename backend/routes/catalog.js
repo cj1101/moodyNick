@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
 const Artwork = require('../models/Artwork');
 const auth = require('../middleware/auth');
 
@@ -264,7 +265,13 @@ router.get('/products/:productId', async (req, res) => {
     }
     
     // Transform variants to match frontend expectations
-    const transformedVariants = variants.map(variant => ({
+    const transformedVariants = variants.map(variant => {
+      // Use Printful variant price as proxy cost (supplier cost may not be available)
+      const proxyCostCents = Math.round((parseFloat(variant.price) || 0) * 100);
+      const categoryLabel = productData.type_name || 'Unisex tee';
+      const effectiveCents = computePriceCents(proxyCostCents, categoryLabel);
+
+      return {
       id: variant.id,
       variant_id: variant.id,
       product_id: variant.product_id,
@@ -274,8 +281,8 @@ router.get('/products/:productId', async (req, res) => {
       color_code: variant.color_code,
       color_code2: variant.color_code2,
       image: variant.image,
-      price: variant.price,
-      retail_price: variant.price, // Map price to retail_price for frontend compatibility
+      price: formatPriceUSD(effectiveCents),
+      retail_price: formatPriceUSD(effectiveCents),
       currency: 'USD',
       in_stock: variant.in_stock,
       availability_regions: variant.availability_regions,
@@ -287,8 +294,10 @@ router.get('/products/:productId', async (req, res) => {
         product_id: variant.product_id,
         image: variant.image,
         name: variant.name
-      }
-    }));
+      },
+      effectivePriceCents: effectiveCents
+    };
+    });
     
     // Transform the response to include all necessary data
     const transformedProduct = {
@@ -462,6 +471,9 @@ router.get('/store-products/:id', async (req, res) => {
     const transformedVariants = await Promise.all(variants.map(async (variant) => {
       let price = '0.00';
       let retailPrice = '0.00';
+      let effectivePrice = '0.00';
+      let effectivePriceCents = 0;
+      let productTypeName = '';
       
       try {
         // Try to get pricing from the regular product variant API
@@ -474,10 +486,15 @@ router.get('/store-products/:id', async (req, res) => {
         if (variantResponse.ok) {
           const variantData = await variantResponse.json();
           const variantDetails = variantData.result?.variant;
+          productTypeName = variantData.result?.product?.type_name || '';
           if (variantDetails) {
             price = variantDetails.price || '0.00';
             retailPrice = variantDetails.retail_price || variantDetails.price || '0.00';
             console.log(`[Store Product Details] Variant ${variant.id} from product API - price: ${price}, retail_price: ${retailPrice}`);
+            const proxyCostCents = Math.round((parseFloat(price) || 0) * 100);
+            const effectiveCents = computePriceCents(proxyCostCents, productTypeName || 'Unisex tee');
+            effectivePriceCents = effectiveCents;
+            effectivePrice = formatPriceUSD(effectiveCents);
           }
         } else {
           console.log(`[Store Product Details] Failed to fetch variant ${variant.id} from product API:`, variantResponse.status);
@@ -491,6 +508,10 @@ router.get('/store-products/:id', async (req, res) => {
         price = variant.retail_price || variant.price || '0.00';
         retailPrice = variant.retail_price || variant.price || '0.00';
         console.log(`[Store Product Details] Using sync_variant pricing for ${variant.id} - price: ${price}, retail_price: ${retailPrice}`);
+        const proxyCostCents = Math.round((parseFloat(price) || 0) * 100);
+        const effectiveCents = computePriceCents(proxyCostCents, productTypeName || 'Unisex tee');
+        effectivePriceCents = effectiveCents;
+        effectivePrice = formatPriceUSD(effectiveCents);
       }
       
       return {
@@ -503,13 +524,14 @@ router.get('/store-products/:id', async (req, res) => {
         color_code: variant.color_code,
         color_code2: variant.color_code2,
         image: variant.image,
-        price: price,
-        retail_price: retailPrice,
+        price: effectivePrice,
+        retail_price: effectivePrice,
         currency: 'USD',
         in_stock: variant.availability_status === 'active', // Check availability_status for stock
         availability_regions: variant.availability_regions,
         availability_status: variant.availability_status,
-        material: variant.material
+        material: variant.material,
+        effectivePriceCents: effectivePriceCents
       };
     }));
     
@@ -769,7 +791,7 @@ router.post('/products/:productId/mockup', async (req, res) => {
         const files = [];
         
         for (const placementData of placements) {
-            const { placement, designDataUrl, artworkDimensions } = placementData;
+            const { placement, designDataUrl, artworkDimensions, position } = placementData;
             
             console.log(`[Mockup Request] Processing placement: ${placement}`);
             
@@ -783,24 +805,31 @@ router.post('/products/:productId/mockup', async (req, res) => {
             
             console.log(`[Mockup Request] ${placement} print area: ${printAreaWidth}x${printAreaHeight}`);
             
-            // Calculate artwork scaling
-            const actualArtworkWidth = artworkDimensions.width;
-            const actualArtworkHeight = artworkDimensions.height;
-            
-            const maxWidth = printAreaWidth * 0.9;
-            const maxHeight = printAreaHeight * 0.9;
-            
-            const scaleX = maxWidth / actualArtworkWidth;
-            const scaleY = maxHeight / actualArtworkHeight;
-            const scale = Math.min(scaleX, scaleY);
-            
-            const artworkWidth = Math.round(actualArtworkWidth * scale);
-            const artworkHeight = Math.round(actualArtworkHeight * scale);
-            
-            const leftOffset = Math.max(0, (printAreaWidth - artworkWidth) / 2);
-            const topOffset = Math.max(0, (printAreaHeight - artworkHeight) / 2);
-            
-            console.log(`[Mockup Request] ${placement} artwork: ${artworkWidth}x${artworkHeight} at (${Math.round(leftOffset)}, ${Math.round(topOffset)})`);
+            // Use frontend-provided position if available; otherwise center & autoscale
+            let artworkWidth;
+            let artworkHeight;
+            let leftOffset;
+            let topOffset;
+
+            if (position && Number.isFinite(position.width) && Number.isFinite(position.height)) {
+                artworkWidth = Math.round(Math.min(position.width, printAreaWidth));
+                artworkHeight = Math.round(Math.min(position.height, printAreaHeight));
+                leftOffset = Math.max(0, Math.min(printAreaWidth - artworkWidth, Math.round(position.left || 0)));
+                topOffset = Math.max(0, Math.min(printAreaHeight - artworkHeight, Math.round(position.top || 0)));
+                console.log(`[Mockup Request] Using provided position for ${placement}: ${artworkWidth}x${artworkHeight} at (${leftOffset}, ${topOffset})`);
+            } else {
+                // Fallback: autoscale to fit and center
+                const actualArtworkWidth = artworkDimensions.width;
+                const actualArtworkHeight = artworkDimensions.height;
+                const scaleX = printAreaWidth / actualArtworkWidth;
+                const scaleY = printAreaHeight / actualArtworkHeight;
+                const scale = Math.min(scaleX, scaleY, 1);
+                artworkWidth = Math.round(actualArtworkWidth * scale);
+                artworkHeight = Math.round(actualArtworkHeight * scale);
+                leftOffset = Math.max(0, (printAreaWidth - artworkWidth) / 2);
+                topOffset = Math.max(0, (printAreaHeight - artworkHeight) / 2);
+                console.log(`[Mockup Request] Fallback centered position for ${placement}: ${artworkWidth}x${artworkHeight} at (${Math.round(leftOffset)}, ${Math.round(topOffset)})`);
+            }
             
             files.push({
                 placement: placement,
@@ -1527,6 +1556,10 @@ router.get('/products/:productId/pricing', async (req, res) => {
         
         // Get base price (includes one print area - typically front)
         const basePrice = parseFloat(variant.price) || 0;
+        const proxyCostCents = Math.round(basePrice * 100);
+        const categoryLabel = product?.type_name || 'Unisex tee';
+        const effectiveBaseCents = computePriceCents(proxyCostCents, categoryLabel);
+        const effectiveBasePrice = parseFloat(formatPriceUSD(effectiveBaseCents));
         const currency = variant.currency || 'USD';
         
         // Get product type to determine available placements and their costs
@@ -1574,7 +1607,9 @@ router.get('/products/:productId/pricing', async (req, res) => {
         
         // Build pricing response
         const pricingData = {
-            basePrice,
+            basePrice, // Printful base (reference)
+            effectiveBasePrice, // Our premium price baseline
+            effectiveBasePriceCents: effectiveBaseCents,
             currency,
             productType,
             productTypeName,

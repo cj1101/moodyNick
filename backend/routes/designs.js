@@ -11,9 +11,10 @@ router.use(auth);
 // @access  Private
 router.post('/', async (req, res) => {
   try {
-    const { productVariantId, placements } = req.body;
+    const { productId, productVariantId, placements } = req.body;
     const newDesign = new Design({
       user: req.user.id,
+      productId,
       productVariantId,
       placements,
     });

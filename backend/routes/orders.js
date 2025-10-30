@@ -43,15 +43,67 @@ router.post('/create-order', auth, async (req, res) => {
         // Prepare Printful order data for custom designs
         const items = [];
         if (syncVariantId) {
+            // For store sync variants, compute premium retail price server-side
+            let retailPriceStr = undefined;
+            try {
+                const variantResp = await fetch(`https://api.printful.com/store/variants/${syncVariantId}`, {
+                    headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+                });
+                if (variantResp.ok) {
+                    const variantData = await variantResp.json();
+                    const productVariantId = variantData.result?.variant?.product?.variant_id || variantData.result?.variant?.variant_id;
+                    const detailResp = productVariantId
+                        ? await fetch(`https://api.printful.com/products/variant/${productVariantId}`, { headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }})
+                        : null;
+                    let proxyCost = 0;
+                    let categoryLabel = 'Unisex tee';
+                    if (detailResp && detailResp.ok) {
+                        const detailData = await detailResp.json();
+                        proxyCost = parseFloat(detailData.result?.variant?.price) || 0;
+                        categoryLabel = detailData.result?.product?.type_name || categoryLabel;
+                    }
+                    const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                    const retailCents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                    retailPriceStr = formatPriceUSD(retailCents);
+                }
+            } catch (e) {
+                console.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
+            }
             items.push({
                 sync_variant_id: syncVariantId,
-                quantity: Number(quantity) || 1
+                quantity: Number(quantity) || 1,
+                ...(retailPriceStr ? { retail_price: retailPriceStr } : {})
             });
         } else if (productVariantId) {
+            // For custom designs, prefer frontend totalCost if provided to include placements
+            let retailPriceStr = undefined;
+            const qty = Number(quantity) || 1;
+            if (totalCost && Number(totalCost) > 0) {
+                const perItem = Math.max(0, Number(totalCost) / qty);
+                retailPriceStr = perItem.toFixed(2);
+            } else {
+                // Fallback: compute premium price from variant base
+                try {
+                    const resp = await fetch(`https://api.printful.com/products/variant/${productVariantId}`, {
+                        headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        const proxyCost = parseFloat(data.result?.variant?.price) || 0;
+                        const categoryLabel = data.result?.product?.type_name || 'Unisex tee';
+                        const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                        const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                        retailPriceStr = formatPriceUSD(cents);
+                    }
+                } catch (e) {
+                    console.warn('[Custom Order] Could not compute premium retail price:', e.message);
+                }
+            }
             items.push({
                 variant_id: productVariantId,
-                quantity: Number(quantity) || 1,
-                files: (design && design.files) ? design.files : []
+                quantity: qty,
+                files: (design && design.files) ? design.files : [],
+                ...(retailPriceStr ? { retail_price: retailPriceStr } : {})
             });
         } else {
             return res.status(400).json({ message: 'Either syncVariantId or productVariantId is required' });
@@ -203,6 +255,34 @@ router.post('/create-store-order', auth, async (req, res) => {
         }
 
         // Prepare Printful order data for store products
+        // Compute multiplier-based retail price override when possible
+        let retailPriceStr = undefined;
+        try {
+            // Get underlying product variant to estimate cost
+            const storeVariantResp = await fetch(`https://api.printful.com/store/variants/${variantId}`, {
+                headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+            });
+            if (storeVariantResp.ok) {
+                const storeVariantData = await storeVariantResp.json();
+                const productVariantId = storeVariantData.result?.variant?.product?.variant_id || storeVariantData.result?.variant?.variant_id;
+                if (productVariantId) {
+                    const detailResp = await fetch(`https://api.printful.com/products/variant/${productVariantId}`, {
+                        headers: { 'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}` }
+                    });
+                    if (detailResp.ok) {
+                        const detailData = await detailResp.json();
+                        const proxyCost = parseFloat(detailData.result?.variant?.price) || 0;
+                        const categoryLabel = detailData.result?.product?.type_name || 'Unisex tee';
+                        const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
+                        const cents = computePriceCents(Math.round(proxyCost * 100), categoryLabel);
+                        retailPriceStr = formatPriceUSD(cents);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
+        }
+
         const printfulOrderData = {
             recipient: {
                 name: shippingAddress.name,
@@ -215,7 +295,8 @@ router.post('/create-store-order', auth, async (req, res) => {
             },
             items: [{
                 sync_variant_id: variantId,
-                quantity: Number(quantity) || 1
+                quantity: Number(quantity) || 1,
+                ...(retailPriceStr ? { retail_price: retailPriceStr } : {})
             }]
         };
 
@@ -240,7 +321,7 @@ router.post('/create-store-order', auth, async (req, res) => {
             console.error('[Store Order] Printful response status:', printfulResponse.status);
             console.error('[Store Order] Printful response headers:', printfulResponse.headers);
             return res.status(printfulResponse.status).json({ 
-                message: 'Failed to create Printful order',
+                message: printfulData?.error?.result?.messages?.[0]?.message || 'Failed to create Printful order',
                 error: printfulData,
                 statusCode: printfulResponse.status
             });

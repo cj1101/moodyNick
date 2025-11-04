@@ -518,8 +518,34 @@ const DesignPage = () => {
         }
 
         const data = await res.json();
-        const placements = data?.printfiles || data?.variant_printfiles || [];
-        const primaryPlacement = placements.find((placement: any) => placement?.placement === 'front') || placements[0];
+        interface PlacementData {
+          placement?: string;
+          print_area?: {
+            area_width?: number;
+            area_height?: number;
+            width?: number;
+            height?: number;
+            print_area_width?: number;
+            print_area_height?: number;
+          };
+          printfile?: {
+            area_width?: number;
+            area_height?: number;
+            width?: number;
+            height?: number;
+            print_area_width?: number;
+            print_area_height?: number;
+          };
+          area_width?: number;
+          area_height?: number;
+          width?: number;
+          height?: number;
+          print_area_width?: number;
+          print_area_height?: number;
+          [key: string]: unknown;
+        }
+        const placements = (data?.printfiles || data?.variant_printfiles || []) as PlacementData[];
+        const primaryPlacement = placements.find((placement: PlacementData) => placement?.placement === 'front') || placements[0];
 
         if (primaryPlacement?.placement) {
           const area = primaryPlacement.print_area || primaryPlacement.printfile || primaryPlacement;
@@ -656,7 +682,8 @@ const DesignPage = () => {
       const artworkHeight = Math.max(100, maxY - minY);
 
       // Compute print-area relative position in Printful pixels
-      const activePrintArea = printArea || { areaWidth: 3600, areaHeight: 4800 } as any;
+      const defaultPrintArea: PrintAreaInfo = { placement: 'front', areaWidth: 3600, areaHeight: 4800 };
+      const activePrintArea = printArea || defaultPrintArea;
       // Rebuild the same rect used in render
       const REFERENCE_MAX_DIMENSION = 4800;
       const MAX_CANVAS_DISPLAY = CANVAS_SIZE * 0.6;

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Outline Generator - Placeholder Creator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 10px;
+        }
+        .info {
+            background: #e0f2fe;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .product-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .product-card h3 {
+            margin-top: 0;
+            color: #1f2937;
+        }
+        canvas {
+            border: 2px dashed #d1d5db;
+            border-radius: 4px;
+            width: 100%;
+            height: auto;
+            background: repeating-conic-gradient(#f3f4f6 0% 25%, white 0% 50%) 50% / 20px 20px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 10px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .download-all {
+            background: #10b981;
+            padding: 15px 30px;
+            font-size: 16px;
+            margin: 30px 0;
+        }
+        .download-all:hover {
+            background: #059669;
+        }
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Product Outline Generator - Placeholder Creator</h1>
+    
+    <div class="info">
+        <strong>ℹ️ Purpose:</strong> This tool generates simple placeholder product outlines for your design canvas. 
+        These are basic shapes to get you started quickly. For production, replace with professionally designed outlines.
+    </div>
+
+    <div class="warning">
+        <strong>⚠️ Note:</strong> These are simplified placeholders. For best results:
+        <ul>
+            <li>Use AI tools (DALL-E, Midjourney) to generate realistic outlines</li>
+            <li>Manually trace Printful's product images in design software</li>
+            <li>Download free mockup templates and extract outlines</li>
+        </ul>
+        See <code>PRODUCT_OUTLINES_GUIDE.md</code> for detailed instructions.
+    </div>
+
+    <button class="download-all" onclick="downloadAll()">📦 Download All Placeholders as ZIP</button>
+
+    <div class="product-grid" id="productGrid"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <script>
+        const products = [
+            {
+                id: '71',
+                name: 'Unisex Staple T-Shirt',
+                filename: 'unisex-staple-tshirt.png',
+                type: 'tshirt'
+            },
+            {
+                id: '19',
+                name: 'Heavy Cotton Tee',
+                filename: 'heavy-cotton-tee.png',
+                type: 'tshirt'
+            },
+            {
+                id: '380',
+                name: 'Garment-Dyed T-Shirt',
+                filename: 'garment-dyed-tshirt.png',
+                type: 'tshirt'
+            },
+            {
+                id: '146',
+                name: 'Heavy Blend Hoodie',
+                filename: 'heavy-blend-hoodie.png',
+                type: 'hoodie'
+            },
+            {
+                id: '387',
+                name: 'Heavy Blend Crewneck',
+                filename: 'heavy-blend-crewneck.png',
+                type: 'sweatshirt'
+            },
+            {
+                id: '679',
+                name: 'Sports Jersey',
+                filename: 'sports-jersey.png',
+                type: 'jersey'
+            },
+            {
+                id: '163',
+                name: 'Tote Bag',
+                filename: 'tote-bag.png',
+                type: 'tote'
+            },
+            {
+                id: '327',
+                name: 'Large Organic Tote',
+                filename: 'large-organic-tote.png',
+                type: 'tote'
+            },
+            {
+                id: '45',
+                name: 'iPhone Case',
+                filename: 'iphone-case.png',
+                type: 'phone'
+            },
+            {
+                id: '46',
+                name: 'Samsung Case',
+                filename: 'samsung-case.png',
+                type: 'phone'
+            },
+            {
+                id: '20',
+                name: 'White Glossy Mug',
+                filename: 'white-glossy-mug.png',
+                type: 'mug'
+            },
+            {
+                id: '21',
+                name: 'Black Glossy Mug',
+                filename: 'black-glossy-mug.png',
+                type: 'mug'
+            },
+            {
+                id: '1',
+                name: 'Poster',
+                filename: 'poster.png',
+                type: 'poster'
+            },
+            {
+                id: '2',
+                name: 'Framed Poster',
+                filename: 'framed-poster.png',
+                type: 'framed-poster'
+            }
+        ];
+
+        function drawProductOutline(canvas, type) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Set drawing style
+            ctx.strokeStyle = '#1f2937';
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Center point
+            const cx = width / 2;
+            const cy = height / 2;
+            
+            switch(type) {
+                case 'tshirt':
+                    drawTShirt(ctx, cx, cy, width * 0.7, height * 0.7);
+                    break;
+                case 'hoodie':
+                    drawHoodie(ctx, cx, cy, width * 0.7, height * 0.75);
+                    break;
+                case 'sweatshirt':
+                    drawSweatshirt(ctx, cx, cy, width * 0.7, height * 0.7);
+                    break;
+                case 'jersey':
+                    drawJersey(ctx, cx, cy, width * 0.7, height * 0.7);
+                    break;
+                case 'tote':
+                    drawToteBag(ctx, cx, cy, width * 0.6, height * 0.7);
+                    break;
+                case 'phone':
+                    drawPhoneCase(ctx, cx, cy, width * 0.3, height * 0.6);
+                    break;
+                case 'mug':
+                    drawMug(ctx, cx, cy, width * 0.4, height * 0.5);
+                    break;
+                case 'poster':
+                    drawPoster(ctx, cx, cy, width * 0.6, height * 0.8);
+                    break;
+                case 'framed-poster':
+                    drawFramedPoster(ctx, cx, cy, width * 0.65, height * 0.85);
+                    break;
+            }
+        }
+
+        function drawTShirt(ctx, cx, cy, w, h) {
+            ctx.beginPath();
+            // Shoulders
+            ctx.moveTo(cx - w/2, cy - h/2 + 50);
+            ctx.lineTo(cx - w/2 - 40, cy - h/2 + 20);
+            ctx.lineTo(cx - w/2 - 40, cy - h/2 + 100);
+            ctx.lineTo(cx - w/2, cy - h/2 + 120);
+            // Left side
+            ctx.lineTo(cx - w/2, cy + h/2);
+            // Bottom
+            ctx.lineTo(cx + w/2, cy + h/2);
+            // Right side
+            ctx.lineTo(cx + w/2, cy - h/2 + 120);
+            ctx.lineTo(cx + w/2 + 40, cy - h/2 + 100);
+            ctx.lineTo(cx + w/2 + 40, cy - h/2 + 20);
+            ctx.lineTo(cx + w/2, cy - h/2 + 50);
+            // Neck
+            ctx.lineTo(cx + 60, cy - h/2 + 50);
+            ctx.quadraticCurveTo(cx + 60, cy - h/2, cx, cy - h/2);
+            ctx.quadraticCurveTo(cx - 60, cy - h/2, cx - 60, cy - h/2 + 50);
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function drawHoodie(ctx, cx, cy, w, h) {
+            ctx.beginPath();
+            // Similar to t-shirt but with hood
+            ctx.moveTo(cx - w/2, cy - h/2 + 100);
+            ctx.lineTo(cx - w/2 - 40, cy - h/2 + 70);
+            ctx.lineTo(cx - w/2 - 40, cy - h/2 + 150);
+            ctx.lineTo(cx - w/2, cy - h/2 + 170);
+            ctx.lineTo(cx - w/2, cy + h/2);
+            ctx.lineTo(cx + w/2, cy + h/2);
+            ctx.lineTo(cx + w/2, cy - h/2 + 170);
+            ctx.lineTo(cx + w/2 + 40, cy - h/2 + 150);
+            ctx.lineTo(cx + w/2 + 40, cy - h/2 + 70);
+            ctx.lineTo(cx + w/2, cy - h/2 + 100);
+            // Hood
+            ctx.lineTo(cx + 80, cy - h/2 + 100);
+            ctx.quadraticCurveTo(cx + 80, cy - h/2 - 20, cx, cy - h/2 - 20);
+            ctx.quadraticCurveTo(cx - 80, cy - h/2 - 20, cx - 80, cy - h/2 + 100);
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function drawSweatshirt(ctx, cx, cy, w, h) {
+            drawTShirt(ctx, cx, cy, w, h); // Similar to t-shirt
+        }
+
+        function drawJersey(ctx, cx, cy, w, h) {
+            drawTShirt(ctx, cx, cy, w, h); // Similar to t-shirt
+        }
+
+        function drawToteBag(ctx, cx, cy, w, h) {
+            ctx.beginPath();
+            // Handles
+            ctx.moveTo(cx - w/3, cy - h/2);
+            ctx.quadraticCurveTo(cx - w/3, cy - h/2 - 60, cx - w/6, cy - h/2 - 60);
+            ctx.lineTo(cx + w/6, cy - h/2 - 60);
+            ctx.quadraticCurveTo(cx + w/3, cy - h/2 - 60, cx + w/3, cy - h/2);
+            ctx.stroke();
+            
+            // Bag body
+            ctx.beginPath();
+            ctx.rect(cx - w/2, cy - h/2, w, h);
+            ctx.stroke();
+        }
+
+        function drawPhoneCase(ctx, cx, cy, w, h) {
+            const radius = 30;
+            ctx.beginPath();
+            ctx.moveTo(cx - w/2 + radius, cy - h/2);
+            ctx.lineTo(cx + w/2 - radius, cy - h/2);
+            ctx.quadraticCurveTo(cx + w/2, cy - h/2, cx + w/2, cy - h/2 + radius);
+            ctx.lineTo(cx + w/2, cy + h/2 - radius);
+            ctx.quadraticCurveTo(cx + w/2, cy + h/2, cx + w/2 - radius, cy + h/2);
+            ctx.lineTo(cx - w/2 + radius, cy + h/2);
+            ctx.quadraticCurveTo(cx - w/2, cy + h/2, cx - w/2, cy + h/2 - radius);
+            ctx.lineTo(cx - w/2, cy - h/2 + radius);
+            ctx.quadraticCurveTo(cx - w/2, cy - h/2, cx - w/2 + radius, cy - h/2);
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Camera cutout
+            ctx.beginPath();
+            ctx.arc(cx - w/4, cy - h/2 + 60, 20, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawMug(ctx, cx, cy, w, h) {
+            ctx.beginPath();
+            // Mug body
+            ctx.moveTo(cx - w/2, cy - h/2);
+            ctx.lineTo(cx - w/2, cy + h/2);
+            ctx.quadraticCurveTo(cx, cy + h/2 + 20, cx + w/2, cy + h/2);
+            ctx.lineTo(cx + w/2, cy - h/2);
+            ctx.quadraticCurveTo(cx, cy - h/2 - 20, cx - w/2, cy - h/2);
+            ctx.stroke();
+            
+            // Handle
+            ctx.beginPath();
+            ctx.arc(cx + w/2 + 40, cy, 50, -Math.PI/2, Math.PI/2, false);
+            ctx.stroke();
+        }
+
+        function drawPoster(ctx, cx, cy, w, h) {
+            ctx.beginPath();
+            ctx.rect(cx - w/2, cy - h/2, w, h);
+            ctx.stroke();
+        }
+
+        function drawFramedPoster(ctx, cx, cy, w, h) {
+            // Outer frame
+            ctx.beginPath();
+            ctx.rect(cx - w/2, cy - h/2, w, h);
+            ctx.stroke();
+            
+            // Inner frame
+            ctx.beginPath();
+            ctx.rect(cx - w/2 + 30, cy - h/2 + 30, w - 60, h - 60);
+            ctx.stroke();
+        }
+
+        function downloadCanvas(canvas, filename) {
+            canvas.toBlob((blob) => {
+                saveAs(blob, filename);
+            });
+        }
+
+        async function downloadAll() {
+            const zip = new JSZip();
+            const folder = zip.folder('product-outlines');
+            
+            for (const product of products) {
+                const canvas = document.getElementById(`canvas-${product.id}`);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve));
+                folder.file(product.filename, blob);
+            }
+            
+            const content = await zip.generateAsync({type: 'blob'});
+            saveAs(content, 'product-outlines.zip');
+        }
+
+        // Generate product cards
+        const grid = document.getElementById('productGrid');
+        products.forEach(product => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.innerHTML = `
+                <h3>${product.name}</h3>
+                <p style="color: #6b7280; font-size: 13px;">Product ID: <code>${product.id}</code></p>
+                <canvas id="canvas-${product.id}" width="2000" height="2000"></canvas>
+                <button onclick="downloadCanvas(document.getElementById('canvas-${product.id}'), '${product.filename}')">
+                    💾 Download ${product.filename}
+                </button>
+            `;
+            grid.appendChild(card);
+            
+            // Draw outline
+            const canvas = document.getElementById(`canvas-${product.id}`);
+            drawProductOutline(canvas, product.type);
+        });
+    </script>
+</body>
+</html>

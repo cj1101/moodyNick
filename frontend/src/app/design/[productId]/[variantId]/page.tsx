@@ -14,11 +14,10 @@ import { usePricing } from '@/state/pricing/pricingStore';
 // Silence verbose logs in production
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = () => {};
-    // @ts-ignore
+    // @ts-expect-error - Intentionally overriding console methods
     console.log = noop;
-    // @ts-ignore
+    // @ts-expect-error - Intentionally overriding console methods
     console.debug = noop;
   } catch {}
 }
@@ -445,12 +444,23 @@ const DesignPage = () => {
 
   // Update pricing when variant or placements change
   useEffect(() => {
-    const basePrice = (variant as any)?.retail_price ? parseFloat(String((variant as any).retail_price)) || 0 : 0;
-    const currency = (variant as any)?.currency || 'USD';
+    interface VariantWithPrice {
+      retail_price?: string | number;
+      currency?: string;
+      [key: string]: unknown;
+    }
+    const variantWithPrice = variant as VariantWithPrice;
+    const basePrice = variantWithPrice?.retail_price ? parseFloat(String(variantWithPrice.retail_price)) || 0 : 0;
+    const currency = variantWithPrice?.currency || 'USD';
 
     const placementKeys = Object.keys(placementData || {});
+    interface PlacementDataEntry {
+      images?: unknown[];
+      texts?: unknown[];
+      [key: string]: unknown;
+    }
     const placementsWithContent = placementKeys.filter(k => {
-      const pd = (placementData as any)[k];
+      const pd = (placementData as Record<string, PlacementDataEntry>)[k];
       return (pd?.images?.length || 0) > 0 || (pd?.texts?.length || 0) > 0;
     });
     const placementCount = Math.max(placementsWithContent.length, basePrice > 0 ? 1 : 0);
@@ -901,8 +911,12 @@ const DesignPage = () => {
 
   const handleAddToCart = () => {
     try {
+      interface CartItem {
+        id: string;
+        [key: string]: unknown;
+      }
       const existingRaw = typeof window !== 'undefined' ? localStorage.getItem('cart') : null;
-      const existing = existingRaw ? (JSON.parse(existingRaw) as any[]) : [];
+      const existing = existingRaw ? (JSON.parse(existingRaw) as CartItem[]) : [];
 
       // Pick an image: prefer a generated mockup; otherwise outline or variant fallback
       const firstMockupEntry = Object.entries(mockupCache).find(([k, v]) => k !== 'outline' && v);
@@ -1090,7 +1104,12 @@ const DesignPage = () => {
             position
           };
         })
-      )).filter(Boolean) as any[];
+      )).filter(Boolean) as Array<{
+        placement: string;
+        designDataUrl: string;
+        artworkDimensions: { width: number; height: number };
+        position: { x: number; y: number };
+      }>;
 
       console.log(`[Multi-Placement] Prepared ${placements.length} placement(s) with designs`);
 
@@ -1126,17 +1145,23 @@ const DesignPage = () => {
       }
 
       // Handle multiple mockups in response
-      const returnedMockups = data?.mockups || [];
+      interface MockupResponse {
+        placement: string;
+        mockup_url?: string;
+        url?: string;
+        [key: string]: unknown;
+      }
+      const returnedMockups = (data?.mockups || []) as MockupResponse[];
       console.log(`[Multi-Placement] Received ${returnedMockups.length} mockups from backend`);
-      console.log('[Multi-Placement] Returned placements:', returnedMockups.map((m: any) => m.placement));
+      console.log('[Multi-Placement] Returned placements:', returnedMockups.map((m: MockupResponse) => m.placement));
 
       // Filter strictly to the placements we requested to avoid mirrored sides
-      const filtered = returnedMockups.filter((m: any) => requestedPlacementSet.has(m.placement));
+      const filtered = returnedMockups.filter((m: MockupResponse) => requestedPlacementSet.has(m.placement));
       console.log(`[Multi-Placement] Using ${filtered.length} mockups after filtering to requested placements`);
 
       if (filtered.length > 0) {
         // Update cache with all generated mockups
-        filtered.forEach((mockup: any) => {
+        filtered.forEach((mockup: MockupResponse) => {
           const mockupUrl = mockup.mockup_url || mockup.url;
           const placement = mockup.placement;
           if (mockupUrl && placement) {
@@ -1146,7 +1171,7 @@ const DesignPage = () => {
 
         // Show gallery modal with all mockups only when we have requested placements
         setShowGalleryModal(true);
-        console.log(`✓ Generated ${filtered.length} mockup(s) for ${filtered.map((m: any) => m.placement).join(', ')}`);
+        console.log(`✓ Generated ${filtered.length} mockup(s) for ${filtered.map((m: MockupResponse) => m.placement).join(', ')}`);
       } else {
         console.warn('[Multi-Placement] No valid mockups matched requested placements; not opening gallery');
       }
@@ -1285,7 +1310,7 @@ const DesignPage = () => {
                             <div className={`text-xs mt-1 ${
                               currentPlacement === placement ? 'opacity-90' : 'opacity-70'
                             }`}>
-                              {widthInches}" × {heightInches}"
+                              {widthInches}&quot; × {heightInches}&quot;
                             </div>
                           )}
                         </button>
@@ -1298,7 +1323,7 @@ const DesignPage = () => {
                     </div>
                     {printArea && (
                       <div className="text-xs text-purple-700 mt-1">
-                        Max size: {(printArea.areaWidth / 300).toFixed(1)}" × {(printArea.areaHeight / 300).toFixed(1)}"
+                        Max size: {(printArea.areaWidth / 300).toFixed(1)}&quot; × {(printArea.areaHeight / 300).toFixed(1)}&quot;
                       </div>
                     )}
                   </div>

@@ -212,8 +212,13 @@ const ProductDetailPage = () => {
     }
     
     // Try variant.image directly (Catalog API)
-    if ((variant as any).image) {
-      return (variant as any).image;
+    interface VariantWithImage {
+      image?: string;
+      [key: string]: unknown;
+    }
+    const variantWithImage = variant as VariantWithImage;
+    if (variantWithImage.image) {
+      return variantWithImage.image;
     }
     
     // Fallback to product image or variant product image

@@ -88,7 +88,7 @@ const OrderConfirmationPage = () => {
                 </div>
                 <div>
                   <h3 className="font-medium text-gray-800">Shipping</h3>
-                  <p className="text-sm text-gray-600">Your order will be shipped and you'll receive tracking information</p>
+                  <p className="text-sm text-gray-600">Your order will be shipped and you&apos;ll receive tracking information</p>
                 </div>
               </div>
             </div>

@@ -205,9 +205,10 @@ const CheckoutPage = () => {
                 throw new Error('No checkout URLs generated');
             }
 
-        } catch (err: any) {
+        } catch (err) {
             console.error('Checkout error:', err);
-            setError(err.message || 'An error occurred during checkout');
+            const errorMessage = err instanceof Error ? err.message : 'An error occurred during checkout';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -295,7 +296,7 @@ const CheckoutPage = () => {
                                     placeholder="Enter promo code"
                                     className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Use "nickfriendsfamily" to pay regular retail.</p>
+                                <p className="text-xs text-gray-500 mt-1">Use &quot;nickfriendsfamily&quot; to pay regular retail.</p>
                             </div>
                         </div>
                     </div>
@@ -387,7 +388,7 @@ const CheckoutPage = () => {
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
                                 <h3 className="font-semibold text-blue-800 mb-2">🔒 Secure Checkout</h3>
                                 <p className="text-sm text-blue-700">
-                                    You'll be redirected to Printful's secure checkout page to complete your payment. 
+                                    You&apos;ll be redirected to Printful&apos;s secure checkout page to complete your payment. 
                                     Your payment information is processed securely by Printful.
                                 </p>
                             </div>

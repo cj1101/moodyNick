@@ -13,11 +13,10 @@ import PostMockupActions from '@/components/design/PostMockupActions';
 // Silence verbose logs in production
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = () => {};
-    // @ts-ignore
+    // @ts-expect-error - Intentionally overriding console methods
     console.log = noop;
-    // @ts-ignore
+    // @ts-expect-error - Intentionally overriding console methods
     console.debug = noop;
   } catch {}
 }
@@ -60,11 +59,16 @@ interface PrintAreaInfo {
   areaHeight: number;
 }
 
+interface ProductVariant {
+  id: number;
+  [key: string]: unknown;
+}
+
 interface Product {
   sync_product?: {
     name: string;
   };
-  sync_variants?: any[];
+  sync_variants?: ProductVariant[];
 }
 
 // ... (DraggableImage, CanvasImage, CanvasText components remain the same) ...
@@ -456,8 +460,15 @@ const DesignPage = () => {
               let mockupUrl: string | null = null;
 
               // Priority 1: Look for flat/default product files (not preview/model images)
+              interface ProductFile {
+                type?: string;
+                preview_url?: string;
+                thumbnail_url?: string;
+                url?: string;
+                [key: string]: unknown;
+              }
               if (!mockupUrl && firstVariant.files && firstVariant.files.length > 0) {
-                const flatFile = firstVariant.files.find((f: any) => 
+                const flatFile = (firstVariant.files as ProductFile[]).find((f: ProductFile) => 
                   f.type === 'default' || 
                   f.type === 'flat' || 
                   f.type === 'front' ||
@@ -588,10 +599,14 @@ const DesignPage = () => {
       const stage = stageRef.current;
       
       // Find and hide print area elements by their blue stroke color
-      const printAreaElements: any[] = [];
+      interface KonvaNode {
+        getAttr: (attr: string) => string | number | undefined;
+        hide: () => void;
+      }
+      const printAreaElements: KonvaNode[] = [];
       
       // Hide rectangles with blue stroke (#3b82f6) and blue fill
-      stage.find('Rect').forEach((rect: any) => {
+      stage.find('Rect').forEach((rect: KonvaNode) => {
         if (rect.getAttr('stroke') === '#3b82f6' || rect.getAttr('fill') === '#3b82f6') {
           printAreaElements.push(rect);
           rect.hide();
@@ -599,7 +614,7 @@ const DesignPage = () => {
       });
       
       // Hide triangular line elements with blue stroke
-      stage.find('Line').forEach((line: any) => {
+      stage.find('Line').forEach((line: KonvaNode) => {
         if (line.getAttr('stroke') === '#2563eb' || line.getAttr('stroke') === '#3b82f6') {
           printAreaElements.push(line);
           line.hide();
@@ -607,7 +622,7 @@ const DesignPage = () => {
       });
       
       // Hide text elements that are part of print area labels
-      stage.find('Text').forEach((text: any) => {
+      stage.find('Text').forEach((text: KonvaNode) => {
         if (text.getAttr('fill') === '#ffffff' && text.getAttr('fontSize') === 14) {
           printAreaElements.push(text);
           text.hide();
@@ -835,10 +850,18 @@ const DesignPage = () => {
 
   const handleAddToCart = () => {
     try {
+      interface CartItem {
+        id: string;
+        [key: string]: unknown;
+      }
       const existingRaw = typeof window !== 'undefined' ? localStorage.getItem('cart') : null;
-      const existing = existingRaw ? (JSON.parse(existingRaw) as any[]) : [];
+      const existing = existingRaw ? (JSON.parse(existingRaw) as CartItem[]) : [];
 
-      const preview = (Array.isArray(placementImages) && placementImages.length > 0 && (placementImages[0] as any)?.url) || '';
+      interface ImageWithUrl {
+        url?: string;
+        [key: string]: unknown;
+      }
+      const preview = (Array.isArray(placementImages) && placementImages.length > 0 && (placementImages[0] as ImageWithUrl)?.url) || '';
 
       const item = {
         id: `custom-${productId}-${Date.now()}`,

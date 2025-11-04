@@ -58,7 +58,7 @@ export default function Home() {
             <div className="text-4xl mb-4">📦</div>
             <h3 className="text-xl font-bold mb-3 text-gray-800">3. Order & Enjoy</h3>
             <p className="text-gray-600">
-              Place your order and we'll print and ship your custom product directly to you.
+              Place your order and we&apos;ll print and ship your custom product directly to you.
             </p>
           </div>
         </div>

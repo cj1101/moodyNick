@@ -6,7 +6,7 @@ Vercel build is failing because it cannot detect Next.js. The error indicates:
 - Root Directory setting may not match the directory of package.json
 
 ## Solution
-The Root Directory needs to be set in the Vercel dashboard project settings. The `vercel.json` file has `rootDirectory: "frontend"` configured, but Vercel also requires this to be set in the dashboard.
+The Root Directory MUST be set in the Vercel dashboard project settings. The `vercel.json` file does NOT support `rootDirectory` as a property - it must be configured in the Vercel dashboard only.
 
 ## Browser Agent Prompt
 
@@ -38,9 +38,10 @@ If you cannot find the Root Directory setting in the General section, try:
 3. The setting might be under "Build Settings" → "Root Directory"
 
 ## What was fixed in code
-- Updated `vercel.json` to ensure correct paths relative to the frontend directory
+- Updated `vercel.json` with correct build configuration (removed invalid `rootDirectory` property)
 - Build command: `npm run build`
 - Output directory: `.next`
 - Install command: `npm install`
-- Root directory: `frontend` (needs to match dashboard setting)
+- Framework: `nextjs`
+- **IMPORTANT**: Root directory `frontend` MUST be set in Vercel dashboard (Settings → General → Root Directory)
 

@@ -7,6 +7,24 @@ import { authenticatedFetch, handleAuthError } from '@/utils/auth';
 import { usePricing } from '@/state/pricing/pricingStore';
 import { estimateShippingAndTax } from '@/lib/pricing/fetchShippingTax';
 
+interface StoreVariant {
+    size?: string;
+    color?: string;
+    [key: string]: unknown;
+}
+
+interface DesignImage {
+    [key: string]: unknown;
+}
+
+interface DesignText {
+    [key: string]: unknown;
+}
+
+interface DesignFile {
+    [key: string]: unknown;
+}
+
 interface CartItem {
     id: string;
     type: 'custom_design' | 'store_product';
@@ -14,14 +32,14 @@ interface CartItem {
     variantId?: number;
     productVariantId?: number;
     name: string;
-    variant?: any;
+    variant?: StoreVariant;
     quantity: number;
     price: string;
     image: string;
     design?: {
-        images: any[];
-        texts: any[];
-        files: any[];
+        images: DesignImage[];
+        texts: DesignText[];
+        files: DesignFile[];
     };
 }
 

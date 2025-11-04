@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { config } from '@/config/api';
 
 interface StoreProductVariant {
@@ -187,15 +188,19 @@ const StoreProductDetailPage = () => {
           <div className="space-y-4">
             <div className="aspect-square bg-white rounded-xl shadow-lg overflow-hidden">
               {selectedVariant?.image ? (
-                <img
+                <Image
                   src={selectedVariant.image}
                   alt={product.name}
+                  width={600}
+                  height={600}
                   className="w-full h-full object-contain p-8"
                 />
               ) : product.thumbnail_url ? (
-                <img
+                <Image
                   src={product.thumbnail_url}
                   alt={product.name}
+                  width={600}
+                  height={600}
                   className="w-full h-full object-contain p-8"
                 />
               ) : (

@@ -194,7 +194,7 @@ export async function getProductsByCategory(
 ): Promise<Record<string, ProductOutlineConfig>> {
   const map = await loadProductOutlineMap(options);
   return Object.entries(map)
-    .filter(([_, config]) => config.category === category)
+    .filter(([, config]) => config.category === category)
     .reduce((acc, [id, config]) => {
       acc[id] = config;
       return acc;
@@ -217,7 +217,7 @@ export function getColorTintFilter(hexColor: string): string {
   return `brightness(${brightness}) saturate(1.2)`;
 }
 
-export default {
+const productOutlines = {
   loadProductOutlineMap,
   getProductOutline,
   hasProductOutline,
@@ -225,3 +225,5 @@ export default {
   getProductsByCategory,
   getColorTintFilter,
 };
+
+export default productOutlines;

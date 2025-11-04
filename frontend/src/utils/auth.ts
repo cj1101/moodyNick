@@ -2,7 +2,7 @@
  * Authentication utilities for handling JWT tokens
  */
 
-import { useRouter } from 'next/navigation';
+import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 
 /**
  * Check if user is authenticated by verifying token exists
@@ -33,7 +33,7 @@ export const clearAuth = (): void => {
  * Handle API response for authentication errors
  * Returns true if the error was handled (user redirected to login)
  */
-export const handleAuthError = (response: Response, errorData: any, router: any): boolean => {
+export const handleAuthError = (response: Response, errorData: { msg?: string }, router: AppRouterInstance): boolean => {
   if (response.status === 401 && errorData.msg === 'Token is not valid') {
     // Clear invalid token and redirect to login
     clearAuth();
@@ -50,7 +50,7 @@ export const handleAuthError = (response: Response, errorData: any, router: any)
 export const authenticatedFetch = async (
   url: string, 
   options: RequestInit = {}, 
-  router: any
+  router: AppRouterInstance
 ): Promise<Response> => {
   const token = getToken();
   
@@ -78,7 +78,7 @@ export const authenticatedFetch = async (
       if (handleAuthError(response, errorData, router)) {
         throw new Error('Authentication failed - redirected to login');
       }
-    } catch (parseError) {
+    } catch {
       // If we can't parse the error, still clear auth and redirect
       clearAuth();
       alert('Your session has expired. Please log in again.');

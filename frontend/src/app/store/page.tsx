@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { config } from '@/config/api';
 
 interface StoreProduct {
@@ -97,7 +98,7 @@ const StorePage = () => {
             <div className="text-6xl mb-4">📦</div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Store Products Available</h3>
             <p className="text-gray-600 mb-6">
-              We're working on adding pre-made products to our store. Check back soon!
+              We&apos;re working on adding pre-made products to our store. Check back soon!
             </p>
             <Link
               href="/shop"
@@ -116,9 +117,11 @@ const StorePage = () => {
               >
                 <div className="aspect-square bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-8">
                   {product.thumbnail_url ? (
-                    <img
+                    <Image
                       src={product.thumbnail_url}
                       alt={product.name}
+                      width={400}
+                      height={400}
                       className="w-full h-full object-contain"
                     />
                   ) : (

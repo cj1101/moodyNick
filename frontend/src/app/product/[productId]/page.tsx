@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { config } from '@/config/api';
 import { usePricing } from '@/state/pricing/pricingStore';
@@ -167,6 +167,15 @@ const ProductDetailPage = () => {
     fetchProduct();
   }, [productId]);
 
+  // Helper functions to get product info from either API structure
+  const getProductName = () => {
+    return product?.sync_product?.name || product?.product?.title || 'Product';
+  };
+
+  const getVariants = useCallback(() => {
+    return product?.sync_variants || product?.variants || [];
+  }, [product]);
+
   // Update selected variant when color or size changes
   useEffect(() => {
     if (product && selectedColor && selectedSize) {
@@ -194,7 +203,7 @@ const ProductDetailPage = () => {
       });
       setSelectedVariant(variant || null);
     }
-  }, [selectedColor, selectedSize, product]);
+  }, [selectedColor, selectedSize, product, getVariants]);
 
   const handleStartDesigning = () => {
     if (selectedVariant) {
@@ -216,22 +225,13 @@ const ProductDetailPage = () => {
       image?: string;
       [key: string]: unknown;
     }
-    const variantWithImage = variant as VariantWithImage;
+    const variantWithImage = variant as unknown as VariantWithImage;
     if (variantWithImage.image) {
       return variantWithImage.image;
     }
     
     // Fallback to product image or variant product image
     return variant.product?.image || product?.sync_product?.thumbnail_url || product?.product?.image;
-  };
-
-  // Helper functions to get product info from either API structure
-  const getProductName = () => {
-    return product?.sync_product?.name || product?.product?.title || 'Product';
-  };
-
-  const getVariants = () => {
-    return product?.sync_variants || product?.variants || [];
   };
 
   const getVariantOptions = (variant: Variant) => {

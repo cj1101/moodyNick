@@ -14,10 +14,10 @@ import PostMockupActions from '@/components/design/PostMockupActions';
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
   try {
     const noop = () => {};
-    // @ts-expect-error - Intentionally overriding console methods
-    console.log = noop;
-    // @ts-expect-error - Intentionally overriding console methods
-    console.debug = noop;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (console as any).log = noop;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (console as any).debug = noop;
   } catch {}
 }
 
@@ -221,21 +221,21 @@ const DraggableImage = ({ src }: { src: string }) => {
       );
     };
 
-  // Preview component for rendering images in the live mockup
-  const PreviewImage = ({ shapeProps, scale }: { shapeProps: ImageShape; scale: number }) => {
-    const [image] = useImage(shapeProps.src, 'anonymous');
-    
-    return (
-      <KonvaImage
-        x={shapeProps.x * scale}
-        y={shapeProps.y * scale}
-        width={(shapeProps.width || 100) * scale}
-        height={(shapeProps.height || 100) * scale}
-        rotation={shapeProps.rotation || 0}
-        image={image}
-      />
-    );
-  };
+  // Preview component for rendering images in the live mockup (currently unused but kept for future use)
+  // const PreviewImage = ({ shapeProps, scale }: { shapeProps: ImageShape; scale: number }) => {
+  //   const [image] = useImage(shapeProps.src, 'anonymous');
+  //   
+  //   return (
+  //     <KonvaImage
+  //       image={image}
+  //       x={shapeProps.x * scale}
+  //       y={shapeProps.y * scale}
+  //       width={(shapeProps.width || 100) * scale}
+  //       height={(shapeProps.height || 100) * scale}
+  //       rotation={shapeProps.rotation || 0}
+  //     />
+  //   );
+  // };
 
   // Function to export only artwork content without background
   const exportArtworkOnly = async (images: ImageShape[], texts: TextShape[]): Promise<string> => {
@@ -262,7 +262,7 @@ const DraggableImage = ({ src }: { src: string }) => {
     // Calculate bounding box of all artwork elements
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    [...images, ...texts].forEach((element, index) => {
+    [...images, ...texts].forEach((element) => {
       const x = element.x;
       const y = element.y;
       const width = element.width || 100;
@@ -366,7 +366,7 @@ const DesignPage = () => {
   const [productMockup, setProductMockup] = useState<string | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [printArea, setPrintArea] = useState<PrintAreaInfo | null>(null);
-  const [currentPlacement, setCurrentPlacement] = useState<string>('front');
+  const [currentPlacement] = useState<string>('front');
   
   // Store images and texts per placement
   const [placementImages, setPlacementImages] = useState<Record<string, ImageShape[]>>({ front: [] });
@@ -419,6 +419,7 @@ const DesignPage = () => {
     };
     setContinueHandler(fn);
     return () => setContinueHandler(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setContinueHandler, selectedVariantId, placementImages, placementTexts]);
   const stageRef = useRef<Konva.Stage>(null);
 
@@ -475,7 +476,7 @@ const DesignPage = () => {
                   f.type === 'back'
                 );
                   if (flatFile) {
-                  mockupUrl = flatFile.preview_url || flatFile.thumbnail_url || flatFile.url;
+                  mockupUrl = flatFile.preview_url || flatFile.thumbnail_url || flatFile.url || null;
                 }
               }
 
@@ -635,7 +636,8 @@ const DesignPage = () => {
       stage.find('Rect').forEach((rect: KonvaNode) => {
         if (rect.getAttr('stroke') === '#3b82f6' || rect.getAttr('fill') === '#3b82f6') {
           printAreaElements.push(rect);
-          rect.hide();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (rect as any).hide();
         }
       });
       
@@ -643,7 +645,8 @@ const DesignPage = () => {
       stage.find('Line').forEach((line: KonvaNode) => {
         if (line.getAttr('stroke') === '#2563eb' || line.getAttr('stroke') === '#3b82f6') {
           printAreaElements.push(line);
-          line.hide();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (line as any).hide();
         }
       });
       
@@ -651,7 +654,8 @@ const DesignPage = () => {
       stage.find('Text').forEach((text: KonvaNode) => {
         if (text.getAttr('fill') === '#ffffff' && text.getAttr('fontSize') === 14) {
           printAreaElements.push(text);
-          text.hide();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (text as any).hide();
         }
       });
       
@@ -660,7 +664,8 @@ const DesignPage = () => {
       
       // Show print area guidelines again
       printAreaElements.forEach((element) => {
-        element.show();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (element as any).show();
       });
 
       // Calculate artwork bounding box to get actual dimensions

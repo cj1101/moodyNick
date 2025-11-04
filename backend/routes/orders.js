@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const logger = require('../utils/logger');
 const Order = require('../models/Order');
 
 // Note: Stripe payment endpoints removed - now using Printful checkout
@@ -12,11 +13,11 @@ router.post('/create-order', auth, async (req, res) => {
     const { productVariantId, syncVariantId, quantity = 1, design, shippingAddress, totalCost, promoCode } = req.body;
 
     try {
-        console.log(`[Custom Order] Creating custom design order for variant ${productVariantId || syncVariantId}`);
+        logger.warn(`[Custom Order] Creating order for variant ${productVariantId || syncVariantId}`);
         
         // Check if API key is configured
         if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-            console.error('[Custom Order] PRINTFUL_API_KEY is not configured');
+            logger.error('[Custom Order] PRINTFUL_API_KEY is not configured');
             return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
         }
 
@@ -73,7 +74,7 @@ router.post('/create-order', auth, async (req, res) => {
                     }
                 }
             } catch (e) {
-                console.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
+                logger.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
             }
             items.push({
                 sync_variant_id: syncVariantId,
@@ -135,7 +136,7 @@ router.post('/create-order', auth, async (req, res) => {
         };
 
         // Submit order to Printful
-        console.log('[Custom Order] Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
+        logger.warn('[Custom Order] Submitting order to Printful');
         
         const printfulResponse = await fetch('https://api.printful.com/orders', {
             method: 'POST',
@@ -147,11 +148,10 @@ router.post('/create-order', auth, async (req, res) => {
         });
 
         const printfulData = await printfulResponse.json();
-        console.log('[Custom Order] Printful response status:', printfulResponse.status);
-        console.log('[Custom Order] Printful response data:', JSON.stringify(printfulData, null, 2));
+        logger.warn('[Custom Order] Printful response status:', printfulResponse.status);
 
         if (!printfulResponse.ok) {
-            console.error('[Custom Order] Printful order creation failed:', printfulData);
+            logger.error('[Custom Order] Printful order creation failed:', printfulData);
             return res.status(printfulResponse.status).json({ 
                 message: 'Failed to create Printful order',
                 error: printfulData 
@@ -179,7 +179,7 @@ router.post('/create-order', auth, async (req, res) => {
         // Get checkout URL from Printful response
         const checkoutUrl = printfulOrder.dashboard_url || `https://www.printful.com/checkout/${printfulOrder.id}`;
         
-        console.log(`[Custom Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
+        logger.warn(`[Custom Order] Order created. Checkout URL: ${checkoutUrl}`);
 
         res.json({ 
             success: true,
@@ -188,7 +188,7 @@ router.post('/create-order', auth, async (req, res) => {
             checkoutUrl
         });
     } catch (error) {
-        console.error('Error creating order:', error);
+        logger.error('Error creating order:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 });
@@ -200,13 +200,11 @@ router.post('/create-store-order', auth, async (req, res) => {
     const { storeProductId, variantId, quantity = 1, shippingAddress, promoCode } = req.body;
 
     try {
-        console.log(`[Store Order] Creating order for store product ${storeProductId}, variant ${variantId}`);
-        console.log(`[Store Order] Request body:`, JSON.stringify(req.body, null, 2));
-        console.log(`[Store Order] User ID:`, req.user.id);
+        logger.warn(`[Store Order] Creating order for store product ${storeProductId}, variant ${variantId}`);
         
         // Check if API key is configured
         if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-            console.error('[Store Order] PRINTFUL_API_KEY is not configured');
+            logger.error('[Store Order] PRINTFUL_API_KEY is not configured');
             return res.status(500).json({ message: 'PRINTFUL_API_KEY is not configured' });
         }
 
@@ -221,7 +219,7 @@ router.post('/create-store-order', auth, async (req, res) => {
 
         if (!storeProductResponse.ok) {
             const errorData = await storeProductResponse.json();
-            console.error('[Store Order] Failed to get store product:', errorData);
+            logger.error('[Store Order] Failed to get store product:', errorData);
             return res.status(storeProductResponse.status).json({ 
                 message: 'Failed to get store product details',
                 error: errorData 
@@ -234,7 +232,7 @@ router.post('/create-store-order', auth, async (req, res) => {
         // Find the variant that matches our variantId (which should be the sync_variant_id)
         const targetVariant = storeProduct.sync_variants.find(v => v.id === variantId);
         if (!targetVariant) {
-            console.error('[Store Order] Variant not found in store product:', variantId);
+            logger.error('[Store Order] Variant not found in store product:', variantId);
             return res.status(400).json({ 
                 message: 'Variant not found in store product',
                 availableVariants: storeProduct.sync_variants.map(v => ({ 
@@ -298,7 +296,7 @@ router.post('/create-store-order', auth, async (req, res) => {
                 }
             }
         } catch (e) {
-            console.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
+            logger.warn('[Store Order] Could not compute premium retail price, proceeding without override:', e.message);
         }
 
         const printfulOrderData = {
@@ -318,7 +316,7 @@ router.post('/create-store-order', auth, async (req, res) => {
             }]
         };
 
-        console.log('[Store Order] Submitting order to Printful:', JSON.stringify(printfulOrderData, null, 2));
+        logger.warn('[Store Order] Submitting order to Printful');
         
         // Submit order to Printful
         const printfulResponse = await fetch('https://api.printful.com/orders', {
@@ -331,13 +329,10 @@ router.post('/create-store-order', auth, async (req, res) => {
         });
 
         const printfulData = await printfulResponse.json();
-        console.log('[Store Order] Printful response status:', printfulResponse.status);
-        console.log('[Store Order] Printful response data:', JSON.stringify(printfulData, null, 2));
+        logger.warn('[Store Order] Printful response status:', printfulResponse.status);
 
         if (!printfulResponse.ok) {
-            console.error('[Store Order] Printful order creation failed:', printfulData);
-            console.error('[Store Order] Printful response status:', printfulResponse.status);
-            console.error('[Store Order] Printful response headers:', printfulResponse.headers);
+            logger.error('[Store Order] Printful order creation failed:', printfulData);
             return res.status(printfulResponse.status).json({ 
                 message: printfulData?.error?.result?.messages?.[0]?.message || 'Failed to create Printful order',
                 error: printfulData,
@@ -365,7 +360,7 @@ router.post('/create-store-order', auth, async (req, res) => {
         // Get checkout URL from Printful response
         const checkoutUrl = printfulOrder.dashboard_url || `https://www.printful.com/checkout/${printfulOrder.id}`;
         
-        console.log(`[Store Order] ✓ Order created successfully. Checkout URL: ${checkoutUrl}`);
+        logger.warn(`[Store Order] Order created. Checkout URL: ${checkoutUrl}`);
 
         res.json({ 
             success: true,
@@ -374,7 +369,7 @@ router.post('/create-store-order', auth, async (req, res) => {
             checkoutUrl
         });
     } catch (error) {
-        console.error('[Store Order] Error creating store order:', error);
+        logger.error('[Store Order] Error creating store order:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 });
@@ -383,8 +378,14 @@ router.post('/create-store-order', auth, async (req, res) => {
 // @desc    Handle webhook notifications from Printful
 // @access  Public (but should verify webhook signature)
 router.post('/printful-webhook', async (req, res) => {
+    // Basic shared-secret verification to protect webhook
+    const provided = req.header('x-printful-secret');
+    const expected = process.env.PRINTFUL_WEBHOOK_SECRET;
+    if (!expected || provided !== expected) {
+        return res.status(401).json({ message: 'Invalid webhook secret' });
+    }
     try {
-        console.log('[Webhook] Received Printful webhook:', JSON.stringify(req.body, null, 2));
+        logger.warn('[Webhook] Received Printful webhook');
         
         const { type, data } = req.body;
         
@@ -392,7 +393,7 @@ router.post('/printful-webhook', async (req, res) => {
             const { order } = data;
             const printfulOrderId = order.id;
             
-            console.log(`[Webhook] Order ${printfulOrderId} updated. Status: ${order.status}`);
+            logger.warn(`[Webhook] Order ${printfulOrderId} updated. Status: ${order.status}`);
             
             // Find the order in our database
             const dbOrder = await Order.findOne({ printfulOrderId });
@@ -435,16 +436,16 @@ router.post('/printful-webhook', async (req, res) => {
                 dbOrder.totalCost = order.costs?.total || dbOrder.totalCost;
                 await dbOrder.save();
                 
-                console.log(`[Webhook] ✓ Updated order ${printfulOrderId} status to ${newStatus}`);
+                logger.warn(`[Webhook] Updated order ${printfulOrderId} status to ${newStatus}`);
             } else {
-                console.log(`[Webhook] Order ${printfulOrderId} not found in database`);
+                logger.warn(`[Webhook] Order ${printfulOrderId} not found in database`);
             }
         }
         
         // Always respond with 200 to acknowledge receipt
         res.status(200).json({ received: true });
     } catch (error) {
-        console.error('[Webhook] Error processing webhook:', error);
+        logger.error('[Webhook] Error processing webhook:', error);
         res.status(500).json({ message: 'Webhook processing error', error: error.message });
     }
 });

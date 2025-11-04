@@ -3,13 +3,14 @@ const router = express.Router();
 const { computePriceCents, formatPriceUSD } = require('../services/pricingRules');
 const Artwork = require('../models/Artwork');
 const auth = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 // @route   GET api/catalog/test-api
 // @desc    Test Printful API connection
 // @access  Public
 router.get('/test-api', async (req, res) => {
   try {
-    console.log('[API Test] Testing Printful API connection...');
+    logger.warn('[API Test] Testing Printful API connection...');
     
     // Check if API key is configured
     if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
@@ -31,7 +32,7 @@ router.get('/test-api', async (req, res) => {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error('[API Test] Printful API returned an error:', data);
+      logger.error('[API Test] Printful API returned an error:', data);
       return res.status(response.status).json({ 
         success: false,
         message: 'Printful API authentication failed',
@@ -41,7 +42,7 @@ router.get('/test-api', async (req, res) => {
       });
     }
     
-    console.log('[API Test] ✓ Printful API connection successful');
+    logger.warn('[API Test] Printful API connection successful');
     res.json({ 
       success: true,
       message: 'Printful API connection successful',
@@ -63,7 +64,7 @@ router.get('/products', async (req, res) => {
   try {
     // Check if Printful API key is configured
     if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-      console.log('[Products] Printful API key not configured, returning mock data');
+      logger.warn('[Products] Printful API key not configured, returning mock data');
       
       // Return mock products for development
       const mockProducts = [
@@ -85,7 +86,7 @@ router.get('/products', async (req, res) => {
       return res.json(mockProducts);
     }
     
-    console.log('[Products] Fetching all products from Printful...');
+    logger.warn('[Products] Fetching all products from Printful...');
     const response = await fetch('https://api.printful.com/products', {
       headers: {
         'Authorization': `Bearer ${process.env.PRINTFUL_API_KEY}`
@@ -94,14 +95,14 @@ router.get('/products', async (req, res) => {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error('[Products] Printful API error:', data);
+      logger.error('[Products] Printful API error:', data);
       return res.status(response.status).json({ message: 'Failed to fetch products', error: data });
     }
     
     // Extract the products array from the Printful response
     // Printful API returns: { code: 200, result: [...] }
     const allProducts = data.result || [];
-    console.log(`[Products] Found ${allProducts.length} total products`);
+    logger.warn(`[Products] Found ${allProducts.length} total products`);
     
     // Priority product types that commonly have 3D mockups
     const priorityTypes = ['T-SHIRT', 'TANK_TOP', 'HOODIE', 'SWEATSHIRT', 'LONG_SLEEVE', 'MUG', 'POSTER', 'CANVAS'];
@@ -112,7 +113,7 @@ router.get('/products', async (req, res) => {
       ...allProducts.filter(p => !priorityTypes.includes(p.type))
     ];
     
-    console.log(`[Products] Checking products for mockup generation capability...`);
+    logger.warn(`[Products] Checking products for mockup generation capability...`);
     
     // Filter products that can generate mockups (have flat files for mockup)
     const productsWithMockups = [];
@@ -120,7 +121,7 @@ router.get('/products', async (req, res) => {
     for (const product of sortedProducts) {
       // Stop if we already have 20 products
       if (productsWithMockups.length >= 20) {
-        console.log(`[Products] Reached 20 products with mockup support, stopping search`);
+        logger.warn(`[Products] Reached 20 products with mockup support, stopping search`);
         break;
       }
       
@@ -169,11 +170,11 @@ router.get('/products', async (req, res) => {
               canGenerateMockups = hasPrintfiles && hasImage;
               
               if (canGenerateMockups) {
-                console.log(`[Products] ✓ [${productsWithMockups.length + 1}/20] Product ${product.id} (${product.type_name}: ${product.title}) - Has ${files.length} printfiles and variant image`);
+                logger.warn(`[Products] Product ${product.id} (${product.type_name}: ${product.title}) - supports mockups`);
               } else if (!hasPrintfiles) {
-                console.log(`[Products] ✗ Product ${product.id} - No printfiles found`);
+                logger.warn(`[Products] Product ${product.id} - No printfiles found`);
               } else if (!hasImage) {
-                console.log(`[Products] ✗ Product ${product.id} - No variant/product image available`);
+                logger.warn(`[Products] Product ${product.id} - No variant/product image available`);
               }
             }
           }
@@ -188,16 +189,16 @@ router.get('/products', async (req, res) => {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       } catch (error) {
-        console.error(`[Products] Error checking product ${product.id}:`, error.message);
+        logger.error(`[Products] Error checking product ${product.id}:`, error.message);
       }
     }
     
-    console.log(`[Products] ✓ Found ${productsWithMockups.length} products with mockup generation capability`);
+    logger.warn(`[Products] Found ${productsWithMockups.length} products with mockup generation capability`);
     
     // Limit to top 20 if there are more
     const finalProducts = productsWithMockups.slice(0, 20);
     if (productsWithMockups.length > 20) {
-      console.log(`[Products] Limiting to top 20 products`);
+      logger.warn(`[Products] Limiting to top 20 products`);
     }
     
     // Transform the products to match our frontend interface
@@ -215,10 +216,10 @@ router.get('/products', async (req, res) => {
       can_generate_mockups: true
     }));
     
-    console.log(`[Products] Returning ${transformedProducts.length} products to frontend`);
+    logger.warn(`[Products] Returning ${transformedProducts.length} products to frontend`);
     res.json(transformedProducts);
   } catch (error) {
-    console.error('[Products] Error fetching products from Printful:', error);
+    logger.error('[Products] Error fetching products from Printful:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -230,11 +231,11 @@ router.get('/products/:productId', async (req, res) => {
   const { productId } = req.params;
   
   try {
-    console.log(`[Product Details] Fetching details for product ${productId}...`);
+    logger.warn(`[Product Details] Fetching details for product ${productId}...`);
     
     // Check if Printful API key is configured
     if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
-      console.error('[Product Details] PRINTFUL_API_KEY is not configured');
+      logger.error('[Product Details] PRINTFUL_API_KEY is not configured');
       return res.status(500).json({ 
         message: 'PRINTFUL_API_KEY is not configured'
       });
@@ -250,7 +251,7 @@ router.get('/products/:productId', async (req, res) => {
     const data = await response.json();
     
     if (!response.ok) {
-      console.error(`[Product Details] Failed to fetch product ${productId}:`, data);
+      logger.error(`[Product Details] Failed to fetch product ${productId}:`, data);
       return res.status(response.status).json({ 
         message: 'Failed to fetch product details',
         error: data 
@@ -333,10 +334,10 @@ router.get('/products/:productId', async (req, res) => {
       can_generate_mockups: true
     };
     
-    console.log(`[Product Details] ✓ Returning details for ${transformedProduct.title} with ${transformedProduct.variants.length} variants`);
+    logger.warn(`[Product Details] Returning details for ${transformedProduct.title} with ${transformedProduct.variants.length} variants`);
     res.json(transformedProduct);
   } catch (error) {
-    console.error(`[Product Details] Error fetching product ${productId}:`, error);
+    logger.error(`[Product Details] Error fetching product ${productId}:`, error);
     res.status(500).json({ 
       message: 'Server error',
       error: error.message 

@@ -2,21 +2,42 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const logger = require('./utils/logger');
+const errorHandler = require('./middleware/errorHandler');
 const path = require('path');
 
 const app = express();
 
-// CORS middleware - allow frontend to communicate with backend
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
-}));
+// Trust proxy for secure cookies and correct IPs behind proxies
+app.set('trust proxy', 1);
+
+// Security headers and gzip compression
+app.use(helmet());
+app.use(compression());
+
+// CORS: production host only; allow localhost in non-production for convenience
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? ['https://moodyart.shop', 'https://www.moodyart.shop']
+  : ['http://localhost:3000', 'http://localhost:3001'];
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // Increase body size limit to handle large canvas data URLs (up to 50MB)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const port = process.env.PORT || 5000;
+
+// Validate critical environment variables at startup (fail fast in prod)
+if (process.env.NODE_ENV === 'production') {
+  const required = ['DATABASE_URL', 'JWT_SECRET', 'PRINTFUL_API_KEY'];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    // eslint-disable-next-line no-throw-literal
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+}
 
 // Serve static files for preselected shop pages
 app.use(express.static(path.join(__dirname, 'public')));
@@ -25,22 +46,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/art', express.static(path.join(__dirname, '..', 'art')));
 
 mongoose.connect(process.env.DATABASE_URL)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log(err));
-
-console.log('[SERVER] Registering API routes...');
+  .then(() => logger.warn('MongoDB connected'))
+  .catch(err => logger.error(err));
 app.use('/api/auth', require('./routes/auth'));
-console.log('[SERVER] ✓ Auth routes registered');
 app.use('/api/catalog', require('./routes/catalog'));
-console.log('[SERVER] ✓ Catalog routes registered');
 app.use('/api/designs', require('./routes/designs'));
-console.log('[SERVER] ✓ Designs routes registered');
 app.use('/api/mockups', require('./routes/mockups'));
-console.log('[SERVER] ✓ Mockups routes registered');
 app.use('/api/orders', require('./routes/orders'));
-console.log('[SERVER] ✓ Orders routes registered');
 app.use('/api/outlines', require('./routes/outlines'));
-console.log('[SERVER] ✓ Outlines routes registered');
+app.use('/api/pricing', require('./routes/pricing'));
 
 app.get('/', (req, res) => {
   res.send('Hello World!');
@@ -55,7 +69,10 @@ app.get('/shop/preselected/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'shop', 'preselected', 'product.html'));
 });
 
+// Global error handler (must be after routes)
+app.use(errorHandler);
+
 app.listen(port, () => {
-  console.log(`Server is running on port: ${port}`);
+  logger.warn(`Server listening on ${port} (${process.env.NODE_ENV || 'development'})`);
 });
 

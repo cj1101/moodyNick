@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-const OrderConfirmationPage = () => {
-  const router = useRouter();
+const OrderConfirmationContent = () => {
   const searchParams = useSearchParams();
   const [orderStatus, setOrderStatus] = useState<'success' | 'cancelled' | 'pending'>('pending');
 
@@ -135,6 +134,21 @@ const OrderConfirmationPage = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const OrderConfirmationPage = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading order confirmation...</p>
+        </div>
+      </div>
+    }>
+      <OrderConfirmationContent />
+    </Suspense>
   );
 };
 

@@ -102,6 +102,7 @@ const StoreProductDetailPage = () => {
       // Get existing cart
       interface CartItem {
         id: string;
+        quantity?: number;
         [key: string]: unknown;
       }
       const existingCart: CartItem[] = JSON.parse(localStorage.getItem('cart') || '[]');
@@ -113,7 +114,10 @@ const StoreProductDetailPage = () => {
 
       if (existingItemIndex >= 0) {
         // Update quantity if item exists
-        existingCart[existingItemIndex].quantity += quantity;
+        const existingQuantity = typeof existingCart[existingItemIndex].quantity === 'number' 
+          ? existingCart[existingItemIndex].quantity 
+          : 0;
+        existingCart[existingItemIndex].quantity = existingQuantity + quantity;
       } else {
         // Add new item
         existingCart.push(cartItem);

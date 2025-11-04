@@ -1,11 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Konva from 'konva';
 import { KonvaEventObject } from 'konva/lib/Node';
-import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Line } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect } from 'react-konva';
 import useImage from 'use-image';
 import { config } from '@/config/api';
 import { authenticatedFetch, handleAuthError } from '@/utils/auth';
@@ -15,10 +15,10 @@ import { usePricing } from '@/state/pricing/pricingStore';
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
   try {
     const noop = () => {};
-    // @ts-expect-error - Intentionally overriding console methods
-    console.log = noop;
-    // @ts-expect-error - Intentionally overriding console methods
-    console.debug = noop;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (console as any).log = noop;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (console as any).debug = noop;
   } catch {}
 }
 
@@ -383,7 +383,6 @@ const DesignPage = () => {
   const params = useParams<{ productId: string; variantId: string }>();
   const router = useRouter();
   const { productId, variantId } = params;
-  const searchParams = useSearchParams();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [product, setProduct] = useState<ProductData | null>(null);
   const [variant, setVariant] = useState<ProductVariant | null>(null);
@@ -407,6 +406,7 @@ const DesignPage = () => {
   const [mockupError, setMockupError] = useState<string | null>(null);
   const [isInitialMockupLoading, setIsInitialMockupLoading] = useState(false);
   const [showMockupModal, setShowMockupModal] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(null);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
   const { setInputs, setContinueHandler, breakdown } = usePricing();
@@ -449,7 +449,7 @@ const DesignPage = () => {
       currency?: string;
       [key: string]: unknown;
     }
-    const variantWithPrice = variant as VariantWithPrice;
+    const variantWithPrice = variant as unknown as VariantWithPrice;
     const basePrice = variantWithPrice?.retail_price ? parseFloat(String(variantWithPrice.retail_price)) || 0 : 0;
     const currency = variantWithPrice?.currency || 'USD';
 
@@ -764,8 +764,6 @@ const DesignPage = () => {
       return;
     }
 
-    let cancelled = false;
-
     const initializeDesignCanvas = async () => {
       console.log(`Initializing design canvas for variant ${variantIdNumber}, placement ${placement}`);
       
@@ -795,10 +793,6 @@ const DesignPage = () => {
     };
 
     initializeDesignCanvas();
-
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variant, product, currentPlacement, variantId, fetchPrintAreaInfo, loadProductOutline, getVariantFallbackMockup, updateMockupCache]);
 
@@ -1101,7 +1095,7 @@ const DesignPage = () => {
               width: artworkWidth,
               height: artworkHeight
             },
-            position
+            position: position ? { x: position.left, y: position.top } : { x: 0, y: 0 }
           };
         })
       )).filter(Boolean) as Array<{
@@ -1182,7 +1176,7 @@ const DesignPage = () => {
     } finally {
       setIsMockupLoading(false);
     }
-  }, [variant, variantId, stageRef, productId, availablePlacements, placementData, updateMockupCache]);
+  }, [variant, variantId, stageRef, productId, availablePlacements, placementData, updateMockupCache, allPrintAreas, printArea]);
 
   // Provide sticky continue handler: only flips a local flag; deep links no-op (run once on mount)
   useEffect(() => {

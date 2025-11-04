@@ -1,0 +1,127 @@
+Capability Map for moodyNick
+Overview
+Backend: Node.js + Express, MongoDB (Mongoose), Printful integration, custom pricing utilities.
+Frontend: Next.js (App Router, TypeScript), UI for shop, design, cart, checkout, profile.
+Assets and docs: Extensive product outline images and testing/instruction markdowns.
+Tech Stack
+Backend: Node.js, Express, Mongoose, JWT auth middleware.
+Frontend: Next.js 14 App Router, TypeScript, Tailwind-style classes, client-side auth helpers.
+External APIs: Printful Orders, Catalog, Mockups; webhook handling; no Stripe Elements wired-in UI yet (placeholders referenced in docs).
+Tooling: ESLint config in frontend; multiple MD docs for tests/implementation.
+Backend Capabilities
+Server setup (backend/server.js)
+Express app with CORS, JSON parsing, route mounting:
+GET / health
+app.use('/api/auth', ...)
+app.use('/api/catalog', ...)
+app.use('/api/designs', ...)
+app.use('/api/mockups', ...)
+app.use('/api/orders', ...)
+app.use('/api/outlines', ...)
+Serves some static assets under backend/public (product outlines, preselected shop pages, temp designs).
+Middleware
+backend/middleware/auth.js: JWT-based guard; used on protected routes.
+backend/middleware/errorHandler.js: Centralized error middleware (logging/formatting).
+Models (Mongoose)
+User.js: Auth user with credentials and timestamps.
+Artwork.js: Stores imageUrl and tags.
+Design.js: Links to user, productVariantId, placements with timestamps.
+Order.js: Persists Printful order linkage, variant IDs, shipping, totals, status, type, timestamps.
+Routes
+Auth (backend/routes/auth.js)
+POST /api/auth/register
+POST /api/auth/login
+GET /api/auth/me (protected)
+Catalog (backend/routes/catalog.js)
+GET /api/catalog/products (Printful products)
+GET /api/catalog/artwork (list)
+POST /api/catalog/artwork/upload (admin/protected)
+Additional endpoints per docs:
+GET /api/catalog/products/:productId/placements
+GET /api/catalog/products/:productId/printfiles?variantId=...
+POST /api/catalog/products/:productId/blank-mockup
+Designs (backend/routes/designs.js) [protected]
+GET /api/designs (list user designs)
+POST /api/designs (save)
+DELETE /api/designs/:id (delete)
+Mockups (backend/routes/mockups.js) [protected]
+POST /api/mockups/generate (Printful mockup generator integration; data URL upload, polling)
+Orders (backend/routes/orders.js) [protected unless noted]
+POST /api/orders/create-order (custom design → Printful order, save DB, pending payment)
+POST /api/orders/create-store-order (store product flow; fetch sync variant; create Printful order)
+GET /api/orders (user order history)
+POST /api/orders/printful-webhook (public, shared-secret header verification; updates order status)
+Notes: Stripe intent routes appear in docs but source file indicates Stripe endpoints removed in favor of Printful checkout link.
+Outlines (backend/routes/outlines.js)
+Generation and/or retrieval of product outlines; integrates with utils/geminiOutline.js.
+Services/Utils
+services/pricingRules.js: Encapsulates pricing logic (margin, placement costs, etc.).
+utils/geminiOutline.js: Generates or processes design outlines for products.
+utils/logger.js: Logger wrapper for consistent logging.
+Scripts/tests
+seed-artwork.js: Seeds artwork collection.
+test-* scripts for mockups, outlines, variant details; include sample assets under test-mockups/.
+Frontend Capabilities (Next.js)
+Pages (frontend/src/app)
+app/page.tsx: Landing/home with CTA to shop and register.
+app/shop/page.tsx: Product browsing (preselected or fetched via API).
+app/store/page.tsx and app/store/[productId]/page.tsx: Store products flow.
+app/product/[productId]/page.tsx: Product detail.
+app/design/[productId]/page.tsx and app/design/[productId]/[variantId]/page.tsx: Design tool UI (artwork placement, add to cart).
+app/cart/page.tsx: Cart view, clear cart, proceed to checkout.
+app/checkout/page.tsx: Shipping form, payment placeholder, order creation.
+app/profile/page.tsx: Protected profile with tabs for designs and orders.
+app/register/page.tsx, app/login/page.tsx: Auth pages.
+app/order-confirmation/page.tsx: Post-checkout confirmation.
+app/layout.tsx: Root layout.
+Components
+components/Navbar.tsx: Top navigation with auth-aware links.
+components/design/PostMockupActions.tsx: Actions after generating mockups.
+Pricing UI:
+components/pricing/PricingExplainer.tsx
+components/pricing/PriceBreakdown.tsx
+components/pricing/PlacementCostExplainer.tsx
+components/pricing/StickyPriceBar.tsx
+State
+state/pricing/pricingStore.tsx: Client-side state for price config and totals.
+Lib/Utils/Config
+config/api.ts: Central API endpoints; base URL via NEXT_PUBLIC_API_URL, defaults to http://localhost:5000.
+config/productOutlines.ts: Product outline configuration used by design UI.
+lib/pricing/calculatePrice.ts: Computes total price using rules and placements.
+lib/pricing/fetchShippingTax.ts: Fetches shipping/tax estimates (placeholder or integrated).
+utils/auth.ts, utils/auth.test.ts: Client auth token helpers and tests.
+Public assets
+public/product-outlines (docs/readme in frontend and image assets in backend).
+SVG assets for UI.
+Integrations
+Printful
+Catalog: products, product info, placements, printfiles.
+Mockups: mockup generation, polling, data URL uploads.
+Orders: order creation; uses dashboard_url or inferred checkout URL; webhook handler updates local order status.
+Credentials: PRINTFUL_API_KEY environment variable required; webhook secret PRINTFUL_WEBHOOK_SECRET.
+OAuth: No OAuth handlers/routes found in the codebase; integration operates via API key headers.
+Payments
+Stripe Elements not implemented in UI; earlier Stripe intent endpoints exist in docs, but current code routes indicate Printful checkout flow instead.
+AuthN/AuthZ
+JWT-based auth middleware on protected backend routes.
+Frontend utils/auth.ts manages tokens (localStorage) and adds Authorization headers for API calls.
+Protected pages/components guard via client checks and server responses.
+Pricing and Checkout
+Client computes price via calculatePrice.ts using placement rules; UI shows breakdown and sticky bar.
+Backend services/pricingRules.js centralizes rule details for consistency.
+Checkout sends shipping address and order data to backend; backend creates Printful order and returns checkout URL (or completes flow per webhook).
+Design and Mockups
+Design page supports placing artwork/text into product placements using configured outline dimensions.
+Mockup generation triggers backend Printful mockup API, with uploads for design images when needed.
+Outline generation/usage via utils/geminiOutline.js and routes/outlines.js.
+Known Docs/Guides (selected)
+IMPLEMENTATION_SUMMARY.md: Endpoints, flow, known TS issues, Stripe notes.
+IMPLEMENTATION_COMPLETE.md, MOCKUP_GENERATION_FIX_COMPLETE.md, PRICE_TALLY_IMPLEMENTATION.md, PRODUCT_OUTLINE_IMPLEMENTATION.md: Describe completed features.
+TESTING_INSTRUCTIONS.md, TEST_NOW.md, TEST_THE_FIXES.md, QUICK_START_TESTING.md, DESIGN_PAGE_MOCKUP_TEST_RESULTS.md: Testing flows and results.
+Environment Variables (from docs and code)
+Backend: PRINTFUL_API_KEY, PRINTFUL_WEBHOOK_SECRET, DATABASE_URL, JWT_SECRET.
+Frontend: NEXT_PUBLIC_API_URL.
+Notable Gaps or TODOs
+Stripe Elements UI is not integrated; checkout flows rely on Printful order/create and dashboard URL.
+Some TypeScript typing issues on design pages called out in docs.
+No S3/Cloudinary upload integration for user assets beyond temporary storage for mockups.

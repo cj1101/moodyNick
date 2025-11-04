@@ -100,10 +100,14 @@ const StoreProductDetailPage = () => {
       };
 
       // Get existing cart
-      const existingCart = JSON.parse(localStorage.getItem('cart') || '[]');
+      interface CartItem {
+        id: string;
+        [key: string]: unknown;
+      }
+      const existingCart: CartItem[] = JSON.parse(localStorage.getItem('cart') || '[]');
       
       // Check if item already exists in cart
-      const existingItemIndex = existingCart.findIndex((item: any) => 
+      const existingItemIndex = existingCart.findIndex((item: CartItem) => 
         item.id === cartItem.id
       );
 

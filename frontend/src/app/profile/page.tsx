@@ -5,14 +5,24 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { config } from '@/config/api';
 
+interface DesignImage {
+    [key: string]: unknown;
+}
+
+interface DesignText {
+    [key: string]: unknown;
+}
+
+interface PlacementData {
+    images: DesignImage[] | Record<string, DesignImage[]>;
+    texts: DesignText[] | Record<string, DesignText[]>;
+}
+
 interface Design {
     _id: string;
     productId?: number;
     productVariantId: number;
-    placements: {
-        images: any; // can be array or placement map
-        texts: any;  // can be array or placement map
-    };
+    placements: PlacementData | Record<string, PlacementData>;
     createdAt: string;
 }
 
@@ -178,7 +188,7 @@ const ProfilePage = () => {
                     <div className="space-y-4">
                         {designs.length === 0 ? (
                             <div className="bg-white rounded-lg shadow p-8 text-center">
-                                <p className="text-gray-600 mb-4">You haven't saved any designs yet.</p>
+                                <p className="text-gray-600 mb-4">You haven&apos;t saved any designs yet.</p>
                                 <Link href="/shop">
                                     <button className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
                                         Start Designing
@@ -198,23 +208,24 @@ const ProfilePage = () => {
                                             </p>
                                             <div className="text-sm text-gray-700">
                                                 {(() => {
-                                                  const placements: any = design.placements || {};
-                                                  const isFlat = placements && (Array.isArray(placements.images) || Array.isArray(placements.texts) || typeof placements.images === 'object' || typeof placements.texts === 'object');
+                                                  const placements = design.placements || {};
+                                                  const isFlat = placements && (Array.isArray((placements as PlacementData).images) || Array.isArray((placements as PlacementData).texts) || typeof (placements as PlacementData).images === 'object' || typeof (placements as PlacementData).texts === 'object');
                                                   let imgCount = 0;
                                                   let txtCount = 0;
                                                   if (isFlat) {
-                                                    const sumVal = (val: any) => {
+                                                    const sumVal = (val: DesignImage[] | DesignText[] | Record<string, DesignImage[] | DesignText[]> | undefined) => {
                                                       if (Array.isArray(val)) return val.length;
                                                       if (val && typeof val === 'object') {
-                                                        return Object.values(val).reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+                                                        return Object.values(val).reduce((sum: number, arr: unknown) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
                                                       }
                                                       return 0;
                                                     };
-                                                    imgCount = sumVal(placements.images);
-                                                    txtCount = sumVal(placements.texts);
+                                                    const flatPlacements = placements as PlacementData;
+                                                    imgCount = sumVal(flatPlacements.images);
+                                                    txtCount = sumVal(flatPlacements.texts);
                                                   } else if (placements && typeof placements === 'object') {
                                                     // Per-placement map: { front: { images:[], texts:[] }, ... }
-                                                    Object.values(placements).forEach((p: any) => {
+                                                    Object.values(placements as Record<string, PlacementData>).forEach((p: PlacementData) => {
                                                       if (p && typeof p === 'object') {
                                                         if (Array.isArray(p.images)) imgCount += p.images.length;
                                                         if (Array.isArray(p.texts)) txtCount += p.texts.length;
@@ -259,7 +270,7 @@ const ProfilePage = () => {
                     <div className="space-y-4">
                         {orders.length === 0 ? (
                             <div className="bg-white rounded-lg shadow p-8 text-center">
-                                <p className="text-gray-600 mb-4">You haven't placed any orders yet.</p>
+                                <p className="text-gray-600 mb-4">You haven&apos;t placed any orders yet.</p>
                                 <Link href="/shop">
                                     <button className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
                                         Start Shopping

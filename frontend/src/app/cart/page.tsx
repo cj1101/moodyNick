@@ -2,6 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+
+interface StoreVariant {
+    size?: string;
+    color?: string;
+    [key: string]: unknown;
+}
+
+interface DesignImage {
+    [key: string]: unknown;
+}
+
+interface DesignText {
+    [key: string]: unknown;
+}
+
+interface DesignFile {
+    [key: string]: unknown;
+}
 
 interface CartItem {
     id: string;
@@ -10,14 +29,14 @@ interface CartItem {
     variantId?: number;
     productVariantId?: number;
     name: string;
-    variant?: any;
+    variant?: StoreVariant;
     quantity: number;
     price: string;
     image: string;
     design?: {
-        images: any[];
-        texts: any[];
-        files: any[];
+        images: DesignImage[];
+        texts: DesignText[];
+        files: DesignFile[];
     };
 }
 
@@ -128,9 +147,11 @@ const CartPage = () => {
                                 {/* Product Image */}
                                 <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                     {item.image ? (
-                                        <img
+                                        <Image
                                             src={item.image}
                                             alt={item.name}
+                                            width={80}
+                                            height={80}
                                             className="w-full h-full object-contain rounded-lg"
                                         />
                                     ) : (

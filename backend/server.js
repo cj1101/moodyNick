@@ -19,9 +19,37 @@ app.use(compression());
 
 // CORS: production host only; allow localhost in non-production for convenience
 const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? ['https://moodyart.shop', 'https://www.moodyart.shop']
+  ? [
+      'https://moodyart.shop',
+      'https://www.moodyart.shop',
+      'https://moodynick-frontend.vercel.app',
+      // Allow all Vercel preview deployments
+      /^https:\/\/.*\.vercel\.app$/
+    ]
   : ['http://localhost:3000', 'http://localhost:3001'];
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({ 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches allowed origins
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true 
+}));
 
 // Increase body size limit to handle large canvas data URLs (up to 50MB)
 app.use(express.json({ limit: '50mb' }));

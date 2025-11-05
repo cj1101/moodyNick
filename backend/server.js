@@ -13,11 +13,8 @@ const app = express();
 // Trust proxy for secure cookies and correct IPs behind proxies
 app.set('trust proxy', 1);
 
-// Security headers and gzip compression
-app.use(helmet());
-app.use(compression());
-
 // CORS: production host only; allow localhost in non-production for convenience
+// CORS must be configured BEFORE helmet to ensure headers are set correctly
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
       'https://moodyart.shop',
@@ -27,6 +24,7 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
       /^https:\/\/.*\.vercel\.app$/
     ]
   : ['http://localhost:3000', 'http://localhost:3001'];
+
 app.use(cors({ 
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -48,8 +46,18 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true 
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
 }));
+
+// Security headers and gzip compression
+// Configure Helmet to allow cross-origin requests
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false
+}));
+app.use(compression());
 
 // Increase body size limit to handle large canvas data URLs (up to 50MB)
 app.use(express.json({ limit: '50mb' }));

@@ -5,7 +5,7 @@ import { calculatePrice } from "@/lib/pricing/calculatePrice";
 
 type Card = { title: string; extraPlacements: number; note?: string };
 
-const EXAMPLE_BASE_PRICE = 20; // fallback when variant base not known on shop
+const EXAMPLE_BASE_PRICE = 40; // fallback when variant base not known on shop
 
 const cards: Card[] = [
   { title: "1 placement (front)", extraPlacements: 0 },

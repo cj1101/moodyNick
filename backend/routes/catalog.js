@@ -582,7 +582,55 @@ router.get('/store-products/:id', async (req, res) => {
 router.get('/artwork', async (req, res) => {
   try {
     const artworks = await Artwork.find();
-    res.json(artworks);
+    
+    // Transform relative URLs to absolute URLs pointing to backend
+    // This ensures artwork loads correctly in production where frontend and backend are on different domains
+    const baseUrl = process.env.PUBLIC_URL || 
+                    process.env.API_BASE_URL || 
+                    (process.env.NODE_ENV === 'production' 
+                      ? 'https://api.moodyart.shop' 
+                      : `${req.protocol}://${req.get('host')}`);
+    
+    const artworksWithAbsoluteUrls = artworks.map(artwork => {
+      let imageUrl = artwork.imageUrl;
+      
+      if (!imageUrl) {
+        return { ...artwork.toObject(), imageUrl: '' };
+      }
+      
+      // Replace localhost URLs with production backend URL
+      if (imageUrl.includes('localhost') || imageUrl.includes('127.0.0.1')) {
+        try {
+          // Extract the path from the localhost URL
+          const urlObj = new URL(imageUrl);
+          imageUrl = `${baseUrl}${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+        } catch (e) {
+          // If URL parsing fails, try to extract path manually
+          const pathMatch = imageUrl.match(/\/.*$/);
+          if (pathMatch) {
+            imageUrl = `${baseUrl}${pathMatch[0]}`;
+          } else {
+            imageUrl = `${baseUrl}/${imageUrl}`;
+          }
+        }
+      }
+      // If URL is relative (starts with /), make it absolute
+      else if (imageUrl.startsWith('/')) {
+        imageUrl = `${baseUrl}${imageUrl}`;
+      }
+      // If URL is already absolute (starts with http), keep it as is
+      // Otherwise, assume it's a relative path and prepend base URL
+      else if (!imageUrl.startsWith('http')) {
+        imageUrl = `${baseUrl}/${imageUrl}`;
+      }
+      
+      return {
+        ...artwork.toObject(),
+        imageUrl
+      };
+    });
+    
+    res.json(artworksWithAbsoluteUrls);
   } catch (error) {
     console.error('Error fetching artwork:', error);
     res.status(500).json({ message: 'Server error' });

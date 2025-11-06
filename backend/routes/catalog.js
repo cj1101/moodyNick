@@ -96,7 +96,20 @@ router.get('/products', async (req, res) => {
     
     if (!response.ok) {
       logger.error('[Products] Printful API error:', data);
-      return res.status(response.status).json({ message: 'Failed to fetch products', error: data });
+      // Don't pass through Printful's status codes - return 500 for backend errors
+      // If it's a 401, it means the API key is invalid/missing
+      if (response.status === 401) {
+        logger.error('[Products] Printful API authentication failed - check PRINTFUL_API_KEY');
+        return res.status(500).json({ 
+          message: 'Backend configuration error: Printful API key is invalid or missing',
+          error: 'Please check server configuration'
+        });
+      }
+      // For other errors, return 500 with details
+      return res.status(500).json({ 
+        message: 'Failed to fetch products from Printful',
+        error: data 
+      });
     }
     
     // Extract the products array from the Printful response

@@ -27,11 +27,25 @@ const ShopPage = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch(config.endpoints.products);
+        const response = await fetch(config.endpoints.products, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include credentials for CORS
+        });
+        
+        console.log('Products API response status:', response.status);
+        console.log('Products API response headers:', Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
-          throw new Error('Failed to fetch products');
+          const errorText = await response.text();
+          console.error('Products API error response:', errorText);
+          throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
         }
+        
         const data = await response.json();
+        console.log('Products API response data:', data);
         
         // Ensure we have an array of products
         if (Array.isArray(data)) {
@@ -43,8 +57,9 @@ const ShopPage = () => {
           setProducts([]);
         }
       } catch (err) {
-        setError('Failed to load products. Please make sure the backend is running.');
-        console.error(err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load products. Please make sure the backend is running.';
+        setError(errorMessage);
+        console.error('Error fetching products:', err);
       } finally {
         setLoading(false);
       }

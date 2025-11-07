@@ -4,6 +4,7 @@ const { computePriceCents, formatPriceUSD } = require('../services/pricingRules'
 const Artwork = require('../models/Artwork');
 const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
+const { getCachedProducts, writeCacheFile } = require('../utils/productCache');
 
 // @route   GET api/catalog/test-api
 // @desc    Test Printful API connection
@@ -62,6 +63,13 @@ router.get('/test-api', async (req, res) => {
 // GET all products from Printful API (filtered for 3D mockup support)
 router.get('/products', async (req, res) => {
   try {
+    // Serve cached product list first to avoid repeated Printful API calls
+    const cachedProducts = getCachedProducts();
+    if (Array.isArray(cachedProducts) && cachedProducts.length > 0) {
+      logger.warn(`[Products] Returning ${cachedProducts.length} products from cache`);
+      return res.json(cachedProducts);
+    }
+
     // Check if Printful API key is configured
     if (!process.env.PRINTFUL_API_KEY || process.env.PRINTFUL_API_KEY === 'your_printful_api_key_here') {
       logger.warn('[Products] Printful API key not configured, returning mock data');
@@ -83,6 +91,8 @@ router.get('/products', async (req, res) => {
         }
       ];
       
+      writeCacheFile(mockProducts);
+      logger.warn('[Products] Cached mock product list');
       return res.json(mockProducts);
     }
     
@@ -230,6 +240,7 @@ router.get('/products', async (req, res) => {
     }));
     
     logger.warn(`[Products] Returning ${transformedProducts.length} products to frontend`);
+    writeCacheFile(transformedProducts);
     res.json(transformedProducts);
   } catch (error) {
     logger.error('[Products] Error fetching products from Printful:', error);

@@ -1294,36 +1294,27 @@ const DesignPage = () => {
     }
   }, [variant, variantId, stageRef, productId, availablePlacements, placementData, updateMockupCache, getCanvasPrintAreaRect]);
 
-  // Provide sticky continue handler: only flips a local flag; deep links no-op (run once on mount)
-  useEffect(() => {
+  const continueCallback = useCallback(async () => {
     const search = typeof window !== 'undefined' ? window.location.search : '';
     const cameFromBuilder = new URLSearchParams(search).get('from') === 'builder';
-    if (!cameFromBuilder) {
-      setContinueHandler(() => {});
-      return () => setContinueHandler(undefined);
-    }
-    const onContinueClick = () => {
+    if (cameFromBuilder) {
+      await handleGenerateMockup();
       setContinueRequested(true);
-    };
-    setContinueHandler(onContinueClick);
-    return () => setContinueHandler(undefined);
-  }, [setContinueHandler]);
+    } else {
+      await handleGenerateMockup();
+    }
+  }, [handleGenerateMockup]);
 
-  // When user clicks Continue and came from builder, generate mockups then open gallery
+  useEffect(() => {
+    setContinueHandler(continueCallback);
+    return () => setContinueHandler(undefined);
+  }, [continueCallback, setContinueHandler]);
+
+  // When user clicks Continue after generating mockups from builder, open gallery automatically
   useEffect(() => {
     if (!continueRequested) return;
-    const search = typeof window !== 'undefined' ? window.location.search : '';
-    const cameFromBuilder = new URLSearchParams(search).get('from') === 'builder';
-    if (!cameFromBuilder) return;
-    let cancelled = false;
-    (async () => {
-      await handleGenerateMockup();
-      if (!cancelled) setShowGalleryModal(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [continueRequested, handleGenerateMockup]);
+    setShowGalleryModal(true);
+  }, [continueRequested]);
 
   return (
     <div className="h-screen flex flex-col bg-white">

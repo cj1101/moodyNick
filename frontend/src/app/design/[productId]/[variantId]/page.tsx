@@ -1200,24 +1200,24 @@ const DesignPage = () => {
             topPx = Math.max(0, Math.min(areaHeightPx - targetHeightPx, topPx));
 
             position = { left: leftPx, top: topPx, width: targetWidthPx, height: targetHeightPx };
-          } else {
-            return null; // Skip placements without any designs
+            
+            return {
+              placement,
+              designDataUrl,
+              artworkDimensions: {
+                width: artworkWidth,
+                height: artworkHeight
+              },
+              position: position ?? {
+                left: 0,
+                top: 0,
+                width: areaWidthPx,
+                height: areaHeightPx
+              }
+            };
           }
 
-          return {
-            placement,
-            designDataUrl,
-            artworkDimensions: {
-              width: artworkWidth,
-              height: artworkHeight
-            },
-            position: position ?? {
-              left: 0,
-              top: 0,
-              width: Math.round(rect.width),
-              height: Math.round(rect.height)
-            }
-          };
+          return null; // Skip placements without any designs
         })
       )).filter(Boolean) as PlacementRequest[];
 

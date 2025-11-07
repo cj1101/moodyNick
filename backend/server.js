@@ -13,17 +13,36 @@ const app = express();
 // Trust proxy for secure cookies and correct IPs behind proxies
 app.set('trust proxy', 1);
 
-// CORS: production host only; allow localhost in non-production for convenience
+// CORS: allow production domains in every environment; add localhost in non-production
+// Optional comma-separated overrides through ALLOWED_ORIGINS
 // CORS must be configured BEFORE helmet to ensure headers are set correctly
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? [
-      'https://moodyart.shop',
-      'https://www.moodyart.shop',
-      'https://moodynick-frontend.vercel.app',
-      // Allow all Vercel preview deployments
-      /^https:\/\/.*\.vercel\.app$/
-    ]
-  : ['http://localhost:3000', 'http://localhost:3001'];
+const productionOrigins = [
+  'https://moodyart.shop',
+  'https://www.moodyart.shop',
+  'https://moodynick-frontend.vercel.app',
+  // Allow all Vercel preview deployments
+  /^https:\/\/.*\.vercel\.app$/
+];
+
+const localOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+
+const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean)
+  .map(origin => {
+    try {
+      return new RegExp(origin);
+    } catch (e) {
+      return origin;
+    }
+  });
+
+const allowedOrigins = [
+  ...productionOrigins,
+  ...(process.env.NODE_ENV === 'production' ? [] : localOrigins),
+  ...envOrigins
+];
 
 app.use(cors({ 
   origin: (origin, callback) => {
@@ -44,6 +63,7 @@ app.use(cors({
       // Return the origin value (not just true) when using credentials
       callback(null, origin);
     } else {
+      logger.error(`[CORS] Blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },

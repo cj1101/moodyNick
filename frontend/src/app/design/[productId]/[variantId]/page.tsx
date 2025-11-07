@@ -103,6 +103,16 @@ type PrintAreaInfo = {
   displayName?: string;
 };
 
+type CanvasPrintAreaRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rawWidth: number;
+  rawHeight: number;
+  info: PrintAreaInfo;
+};
+
 interface PrintAreaDimensions {
   area_width?: number;
   area_height?: number;
@@ -421,6 +431,65 @@ const DesignPage = () => {
   // Helper to get product outline (shared across all placements)
   const getProductOutline = () => mockupCache['outline'] || null;
   
+  const getCanvasPrintAreaRect = useCallback(
+    (placement: string): CanvasPrintAreaRect => {
+      const fallbackInfo: PrintAreaInfo = {
+        placement,
+        areaWidth: 3600,
+        areaHeight: 4800,
+        displayName: 'Print Area'
+      };
+
+      const activeInfo =
+        allPrintAreas[placement] ??
+        (placement === currentPlacement && printArea ? printArea : undefined);
+
+      const areaInfo = activeInfo ?? fallbackInfo;
+
+      const rawWidth = areaInfo.areaWidth || 3600;
+      const rawHeight = areaInfo.areaHeight || 4800;
+      const REFERENCE_MAX_DIMENSION = 4800; // 16" at 300DPI
+      const MAX_CANVAS_DISPLAY = CANVAS_SIZE * 0.6;
+      const scaleRatio = MAX_CANVAS_DISPLAY / REFERENCE_MAX_DIMENSION;
+
+      let width = rawWidth * scaleRatio;
+      let height = rawHeight * scaleRatio;
+      const maxFit = 0.7;
+      if (width > CANVAS_SIZE * maxFit || height > CANVAS_SIZE * maxFit) {
+        const excessScale = Math.max(
+          width / (CANVAS_SIZE * maxFit),
+          height / (CANVAS_SIZE * maxFit)
+        );
+        width /= excessScale;
+        height /= excessScale;
+      }
+
+      let verticalOffset = -0.05;
+      if (
+        placement.includes('sleeve') ||
+        placement === 'left' ||
+        placement === 'right' ||
+        width < CANVAS_SIZE * 0.25
+      ) {
+        verticalOffset = 0;
+      }
+
+      const x = (CANVAS_SIZE - width) / 2;
+      const y = (CANVAS_SIZE - height) / 2 + CANVAS_SIZE * verticalOffset;
+
+      return {
+        x,
+        y,
+        width,
+        height,
+        rawWidth,
+        rawHeight,
+        info: areaInfo
+      };
+    },
+    [allPrintAreas, currentPlacement, printArea]
+  );
+
   // Helper to update current placement data
   const updateCurrentImages = (images: ImageShape[]) => {
     setPlacementData(prev => ({
@@ -814,26 +883,89 @@ const DesignPage = () => {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!stageRef.current) return;
-    stageRef.current.setPointersPositions(e.nativeEvent);
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    stage.setPointersPositions(e.nativeEvent);
     const imageSrc = e.dataTransfer.getData('imageSrc');
     console.log(`[Drag Drop] Image dropped: ${imageSrc} on placement: ${currentPlacement}`);
-    if (imageSrc) {
-      const currentImages = getCurrentImages();
-      const pointerPosition = stageRef.current.getPointerPosition();
-      const newImage: ImageShape = {
-        id: `image${currentImages.length + 1}_${currentPlacement}`,
-        type: 'image',
-        src: imageSrc,
-        x: pointerPosition?.x ?? 0,
-        y: pointerPosition?.y ?? 0,
-        width: 100,
-        height: 100,
-      };
-      console.log(`[Drag Drop] Adding new image:`, newImage);
-      updateCurrentImages([...currentImages, newImage]);
-      console.log(`[Drag Drop] Updated images for placement ${currentPlacement}:`, [...currentImages, newImage]);
-    }
+    if (!imageSrc) return;
+
+    const placement = currentPlacement;
+    const pointerPosition = stage.getPointerPosition() ?? {
+      x: CANVAS_SIZE / 2,
+      y: CANVAS_SIZE / 2
+    };
+    const rect = getCanvasPrintAreaRect(placement);
+    const areaInfo = rect.info;
+    const areaWidthPx = areaInfo.areaWidth || 3600;
+    const areaHeightPx = areaInfo.areaHeight || 4800;
+
+    const appendImageToPlacement = (naturalWidth?: number, naturalHeight?: number) => {
+      let width = rect.width * 0.5;
+      let height = rect.height * 0.5;
+
+      if (naturalWidth && naturalHeight) {
+        const widthFromArea = (naturalWidth / areaWidthPx) * rect.width;
+        const heightFromArea = (naturalHeight / areaHeightPx) * rect.height;
+
+        if (widthFromArea > 0 && heightFromArea > 0) {
+          width = widthFromArea;
+          height = heightFromArea;
+        }
+
+        const maxWidth = rect.width * 0.95;
+        const maxHeight = rect.height * 0.95;
+        const scaleDown = Math.min(maxWidth / width, maxHeight / height, 1);
+        width *= scaleDown;
+        height *= scaleDown;
+
+        const minSize = Math.min(rect.width, rect.height) * 0.2;
+        const scaleUp = Math.max(minSize / width, minSize / height, 1);
+        width *= scaleUp;
+        height *= scaleUp;
+      }
+
+      const dropX = pointerPosition.x ?? rect.x + rect.width / 2;
+      const dropY = pointerPosition.y ?? rect.y + rect.height / 2;
+      const tentativeX = dropX - width / 2;
+      const tentativeY = dropY - height / 2;
+
+      const minX = rect.x;
+      const maxX = rect.x + rect.width - width;
+      const minY = rect.y;
+      const maxY = rect.y + rect.height - height;
+
+      const clampedX = Math.min(Math.max(tentativeX, minX), maxX);
+      const clampedY = Math.min(Math.max(tentativeY, minY), maxY);
+
+      setPlacementData(prev => {
+        const existing = prev[placement] ?? { images: [], texts: [] };
+        const newImage: ImageShape = {
+          id: `image${existing.images.length + 1}_${placement}`,
+          type: 'image',
+          src: imageSrc,
+          x: clampedX,
+          y: clampedY,
+          width,
+          height
+        };
+        console.log(`[Drag Drop] Adding scaled image:`, newImage);
+        return {
+          ...prev,
+          [placement]: {
+            ...existing,
+            images: [...existing.images, newImage]
+          }
+        };
+      });
+    };
+
+    const preload = new window.Image();
+    preload.crossOrigin = 'anonymous';
+    preload.onload = () => appendImageToPlacement(preload.naturalWidth, preload.naturalHeight);
+    preload.onerror = () => appendImageToPlacement();
+    preload.src = imageSrc;
   };
 
   const addText = () => {
@@ -990,34 +1122,6 @@ const DesignPage = () => {
 
       console.log(`[Multi-Placement] Preparing placements (designs only) from:`, availablePlacements);
 
-      // Helper to compute the on-canvas print area rect (x,y,width,height)
-      const getPrintAreaRect = (placement: string) => {
-        const active = allPrintAreas[placement] || printArea;
-        const rawWidth = active?.areaWidth || 3600;
-        const rawHeight = active?.areaHeight || 4800;
-        const REFERENCE_MAX_DIMENSION = 4800; // 16" at 300DPI
-        const MAX_CANVAS_DISPLAY = CANVAS_SIZE * 0.6;
-        const scaleRatio = MAX_CANVAS_DISPLAY / REFERENCE_MAX_DIMENSION;
-        let width = rawWidth * scaleRatio;
-        let height = rawHeight * scaleRatio;
-        const maxFit = 0.7;
-        if (width > CANVAS_SIZE * maxFit || height > CANVAS_SIZE * maxFit) {
-          const excessScale = Math.max(
-            width / (CANVAS_SIZE * maxFit),
-            height / (CANVAS_SIZE * maxFit)
-          );
-          width = width / excessScale;
-          height = height / excessScale;
-        }
-        let verticalOffset = -0.05;
-        if (placement.includes('sleeve') || placement === 'left' || placement === 'right' || width < CANVAS_SIZE * 0.25) {
-          verticalOffset = 0;
-        }
-        const x = (CANVAS_SIZE - width) / 2;
-        const y = (CANVAS_SIZE - height) / 2 + (CANVAS_SIZE * verticalOffset);
-        return { x, y, width, height, rawWidth, rawHeight };
-      };
-
       // Build placements array ONLY for placements that actually have designs
       const placements = (await Promise.all(
         availablePlacements.map(async (placement) => {
@@ -1054,10 +1158,10 @@ const DesignPage = () => {
             designDataUrl = await exportArtworkOnly(images, texts);
 
             // Map canvas coords to print-area pixel coordinates
-            const rect = getPrintAreaRect(placement);
-            const area = allPrintAreas[placement] || printArea;
-            const areaWidthPx = area?.areaWidth || 3600;
-            const areaHeightPx = area?.areaHeight || 4800;
+            const rect = getCanvasPrintAreaRect(placement);
+            const area = rect.info;
+            const areaWidthPx = area.areaWidth || 3600;
+            const areaHeightPx = area.areaHeight || 4800;
 
             // Ratios within the on-canvas print area rectangle
             const relLeft = (minX - rect.x) / rect.width;
@@ -1467,56 +1571,12 @@ const DesignPage = () => {
               >
                 <Layer>
                   {(() => {
-                    // Always render print area - use state or fallback
-                    const activePrintArea = printArea || {
-                      placement: currentPlacement,
-                      areaWidth: 3600,
-                      areaHeight: 4800,
-                      displayName: 'Print Area'
-                    };
+                    const rect = getCanvasPrintAreaRect(currentPlacement);
+                    const activePrintArea = rect.info;
                     
                     console.log('Rendering print area:', activePrintArea);
-                    
-                    const rawWidth = activePrintArea.areaWidth;
-                    const rawHeight = activePrintArea.areaHeight;
-                    
-                    // Use a CONSISTENT scale factor for all placements so relative sizes are accurate
-                    // We'll scale based on a standard maximum print area size (e.g., 12" x 16" = 3600 x 4800 px at 300 DPI)
-                    const REFERENCE_MAX_DIMENSION = 4800; // pixels (16" at 300 DPI)
-                    const MAX_CANVAS_DISPLAY = CANVAS_SIZE * 0.6; // 60% of canvas
-                    
-                    // Calculate consistent scale: how many canvas pixels per print area pixel
-                    const scaleRatio = MAX_CANVAS_DISPLAY / REFERENCE_MAX_DIMENSION;
-                    
-                    // Apply the SAME scale to both dimensions
-                    let width = rawWidth * scaleRatio;
-                    let height = rawHeight * scaleRatio;
-                    
-                    // If the scaled size exceeds canvas limits, scale down proportionally
-                    const maxFit = 0.7; // Max 70% of canvas for very large areas
-                    if (width > CANVAS_SIZE * maxFit || height > CANVAS_SIZE * maxFit) {
-                      const excessScale = Math.max(
-                        width / (CANVAS_SIZE * maxFit),
-                        height / (CANVAS_SIZE * maxFit)
-                      );
-                      width = width / excessScale;
-                      height = height / excessScale;
-                    }
-                    
-                    // Adjust positioning based on placement type
-                    let verticalOffset = -0.05; // Default: shift up 5% for front/back
-                    
-                    // Smaller placements (sleeves, emblem areas) stay centered
-                    if (currentPlacement.includes('sleeve') || 
-                        currentPlacement === 'left' || 
-                        currentPlacement === 'right' ||
-                        width < CANVAS_SIZE * 0.25) {
-                      verticalOffset = 0; // Centered for small placements
-                    }
-                    
-                    // Center horizontally, adjust vertically based on placement
-                    const x = (CANVAS_SIZE - width) / 2;
-                    const y = (CANVAS_SIZE - height) / 2 + (CANVAS_SIZE * verticalOffset);
+
+                    const { width, height, x, y, rawWidth, rawHeight } = rect;
 
                     // Convert pixels to inches for display (assuming 300 DPI)
                     const widthInches = (rawWidth / 300).toFixed(1);

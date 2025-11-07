@@ -1123,6 +1123,18 @@ const DesignPage = () => {
       console.log(`[Multi-Placement] Preparing placements (designs only) from:`, availablePlacements);
 
       // Build placements array ONLY for placements that actually have designs
+      type PlacementRequest = {
+        placement: string;
+        designDataUrl: string;
+        artworkDimensions: { width: number; height: number };
+        position: {
+          left: number;
+          top: number;
+          width: number;
+          height: number;
+        };
+      };
+
       const placements = (await Promise.all(
         availablePlacements.map(async (placement) => {
           const data = placementData[placement];
@@ -1199,15 +1211,15 @@ const DesignPage = () => {
               width: artworkWidth,
               height: artworkHeight
             },
-            position: position ? { x: position.left, y: position.top } : { x: 0, y: 0 }
+            position: position ?? {
+              left: 0,
+              top: 0,
+              width: Math.round(rect.width),
+              height: Math.round(rect.height)
+            }
           };
         })
-      )).filter(Boolean) as Array<{
-        placement: string;
-        designDataUrl: string;
-        artworkDimensions: { width: number; height: number };
-        position: { x: number; y: number };
-      }>;
+      )).filter(Boolean) as PlacementRequest[];
 
       console.log(`[Multi-Placement] Prepared ${placements.length} placement(s) with designs`);
 
@@ -1280,7 +1292,7 @@ const DesignPage = () => {
     } finally {
       setIsMockupLoading(false);
     }
-  }, [variant, variantId, stageRef, productId, availablePlacements, placementData, updateMockupCache, allPrintAreas, printArea]);
+  }, [variant, variantId, stageRef, productId, availablePlacements, placementData, updateMockupCache, getCanvasPrintAreaRect]);
 
   // Provide sticky continue handler: only flips a local flag; deep links no-op (run once on mount)
   useEffect(() => {
